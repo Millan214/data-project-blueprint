@@ -1,0 +1,48 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Run Pipeline",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pipeline.main",
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Log Viewer",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/log_viewer.py",
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Pipeline + Log Viewer",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pipeline.main",
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "preLaunchTask": "start-log-viewer"
+        },
+        {
+            "name": "Run Tests",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": ["tests/", "-v"],
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Pipeline (Dry Run)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pipeline.main",
+            "args": ["--dry-run"],
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal"
+        }
+    ]
+}

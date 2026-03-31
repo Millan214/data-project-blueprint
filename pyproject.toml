@@ -1,0 +1,25 @@
+[tool.poetry]
+name = "sleep-pipeline"
+version = "0.1.0"
+description = "Medallion-architecture data pipeline for sleep health survey data"
+authors = []
+packages = [{ include = "pipeline" }]
+
+[tool.poetry.dependencies]
+python = ">=3.10,<4.0"
+pandas = "*"
+numpy = "*"
+pyarrow = "*"
+
+[tool.poetry.group.dev.dependencies]
+jupyter = "*"
+ipykernel = "*"
+matplotlib = "*"
+pytest = "*"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
