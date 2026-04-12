@@ -1,8 +1,8 @@
 """Tests for Gold layer transforms."""
 import pandas as pd
 
-from pipeline.entities.columns import GoldCols as G
-from pipeline.layer_transforms.gold_transforms import (
+from pipeline.schemas.columns import GoldCols as G
+from pipeline.transforms.gold import (
     build_correlation_matrix,
     build_lifestyle_impact,
     build_risk_profiles,

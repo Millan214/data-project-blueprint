@@ -8,8 +8,8 @@ import pytest
 # Ensure pipeline imports resolve
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from pipeline.layer_transforms.bronze_transforms import apply_bronze_transforms
-from pipeline.layer_transforms.silver_transforms import (
+from pipeline.transforms.bronze import apply_bronze_transforms
+from pipeline.transforms.silver import (
     apply_silver_transforms,
     split_valid_and_quarantine,
 )

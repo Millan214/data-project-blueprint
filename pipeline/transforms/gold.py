@@ -1,14 +1,14 @@
 """
 Gold layer transforms — analysis-ready aggregations.
 
-Use Cases layer: pure functions, DataFrame in → DataFrame out.
+Pure functions, DataFrame in → DataFrame out.
 Each function produces a single analytical dataset.
 """
 import pandas as pd
 import numpy as np
 
-from pipeline.entities.columns import GoldCols as G
-from pipeline.config.config import (
+from pipeline.schemas.columns import GoldCols as G
+from pipeline.config.analysis_params import (
     NUMERIC_COLUMNS_FOR_CORRELATION,
     CORRELATION_MIN_THRESHOLD,
     LIFESTYLE_FACTORS,

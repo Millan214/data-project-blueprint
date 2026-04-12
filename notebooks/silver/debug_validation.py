@@ -6,9 +6,9 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 import pandas as pd
-from pipeline.config.config import DATA_DIR, SOURCE_FILE, BRONZE_DIR
-from pipeline.entities.columns import BronzeCols as BC, SilverCols as SC
-from pipeline.config.config import (
+from pipeline.config.paths import DATA_DIR, SOURCE_FILE, BRONZE_DIR
+from pipeline.schemas.columns import BronzeCols as BC, SilverCols as SC
+from pipeline.config.validation_rules import (
     VALID_AGE_RANGE, VALID_BMI_RANGE,
     VALID_SLEEP_DURATION_RANGE, VALID_SLEEP_QUALITY_RANGE,
     VALID_HEART_RATE_RANGE, VALID_STRESS_RANGE,

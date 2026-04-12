@@ -22,7 +22,7 @@ import pandas as pd
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from pipeline.config.config import (
+from pipeline.config.paths import (
     DATA_DIR,
     SOURCE_FILE,
     BRONZE_DIR,
@@ -31,15 +31,15 @@ from pipeline.config.config import (
     QUARANTINE_DIR,
     SUMMARY_FILE,
 )
-from pipeline.controllers.io_adapter import (
+from pipeline.io.adapters import (
     read_csv, write_parquet, write_csv, write_json,
 )
-from pipeline.layer_transforms.bronze_transforms import apply_bronze_transforms
-from pipeline.layer_transforms.silver_transforms import (
+from pipeline.transforms.bronze import apply_bronze_transforms
+from pipeline.transforms.silver import (
     apply_silver_transforms,
     split_valid_and_quarantine,
 )
-from pipeline.layer_transforms.gold_transforms import apply_gold_transforms
+from pipeline.transforms.gold import apply_gold_transforms
 from pipeline.config.logging_config import setup_logging, set_run_id, clear_run_id, set_layer, clear_layer
 
 setup_logging()

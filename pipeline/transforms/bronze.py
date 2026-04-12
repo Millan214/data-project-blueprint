@@ -1,7 +1,7 @@
 """
 Bronze layer transforms — ingest raw data as-is with metadata.
 
-Use Cases layer: pure functions, DataFrame in → DataFrame out.
+Pure functions, DataFrame in → DataFrame out.
 No I/O, no side effects.
 """
 import uuid
@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 
 import pandas as pd
 
-from pipeline.entities.columns import BronzeCols as C
+from pipeline.schemas.columns import BronzeCols as C
 
 
 def add_ingestion_metadata(df: pd.DataFrame, source_file: str) -> pd.DataFrame:

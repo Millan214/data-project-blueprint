@@ -1,9 +1,8 @@
 """
 Column name constants for the sleep health pipeline.
 
-Entities layer — pure Python, no framework dependency.
-These constants define the single source of truth for column names
-across Bronze, Silver, and Gold layers.
+Single source of truth for column names across Bronze, Silver,
+and Gold layers. Pure Python, no framework dependency.
 """
 
 

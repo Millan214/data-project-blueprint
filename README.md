@@ -28,12 +28,16 @@ sleep/
 │   ├── input/                Raw source data
 │   └── output/               Pipeline outputs (bronze/silver/gold/quarantine)
 ├── logs/                     Log files + run summary JSON
+├── tools/
 │   └── log_viewer.py         Live log viewer (HTML dashboard)
-├── pipeline/                 Production code (clean architecture)
-│   ├── config/               Pipeline config + logging setup
-│   ├── entities/             Domain constants (column names)
-│   ├── controllers/          I/O adapters (read/write CSV, Parquet, JSON)
-│   ├── layer_transforms/     Pure transform functions per layer
+├── pipeline/                 Production code
+│   ├── config/
+│   │   ├── paths.py          File system paths
+│   │   ├── validation_rules.py  Domain thresholds + categorization
+│   │   └── analysis_params.py   Gold layer analysis parameters
+│   ├── schemas/              Column name constants
+│   ├── io/                   Read/write CSV, Parquet, JSON
+│   ├── transforms/           Pure transform functions (bronze, silver, gold)
 │   └── main.py               Orchestrator + CLI
 ├── tests/                    pytest unit tests
 ├── notebooks/                Development notebooks (bronze/silver/gold/sandbox)
@@ -53,15 +57,15 @@ pip install -r requirements-dev.txt
 ### Run the full pipeline
 
 ```bash
-python -m pipeline.main
+python -m pipeline
 ```
 
 ### CLI options
 
 ```bash
-python -m pipeline.main --source other_data.csv   # Different input file
-python -m pipeline.main --layer gold               # Run only the gold layer
-python -m pipeline.main --dry-run                  # Validate config without running
+python -m pipeline --source other_data.csv   # Different input file
+python -m pipeline --layer gold               # Run only the gold layer
+python -m pipeline --dry-run                  # Validate config without running
 ```
 
 ### Run tests
@@ -73,7 +77,7 @@ pytest tests/ -v
 ### Live log viewer
 
 ```bash
-python logs/log_viewer.py
+python tools/log_viewer.py
 # Open http://localhost:8777
 ```
 

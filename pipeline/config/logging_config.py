@@ -7,7 +7,7 @@ Dual output: concise console (INFO) + detailed rotating file (DEBUG).
 import logging
 from logging.handlers import RotatingFileHandler
 
-from pipeline.config.config import LOGS_DIR
+from pipeline.config.paths import LOGS_DIR
 
 _CONSOLE_FMT = "%(asctime)s | %(levelname)-7s | %(name)s | %(message)s"
 _FILE_FMT = "%(asctime)s | %(levelname)-7s | %(run_id)s | %(layer)-7s | %(name)s | %(funcName)s | %(message)s"

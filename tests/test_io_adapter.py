@@ -1,7 +1,7 @@
-"""Tests for I/O adapter (controllers layer)."""
+"""Tests for I/O adapters."""
 import pandas as pd
 
-from pipeline.controllers.io_adapter import read_csv, write_parquet, write_csv
+from pipeline.io.adapters import read_csv, write_parquet, write_csv
 
 
 class TestWriteParquet:

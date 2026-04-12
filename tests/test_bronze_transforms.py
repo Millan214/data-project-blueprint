@@ -1,8 +1,8 @@
 """Tests for Bronze layer transforms."""
 import pandas as pd
 
-from pipeline.entities.columns import BronzeCols as C
-from pipeline.layer_transforms.bronze_transforms import (
+from pipeline.schemas.columns import BronzeCols as C
+from pipeline.transforms.bronze import (
     add_ingestion_metadata,
     apply_bronze_transforms,
 )

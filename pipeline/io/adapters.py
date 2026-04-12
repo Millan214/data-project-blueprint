@@ -1,8 +1,7 @@
 """
-Controllers layer — I/O adapters for reading and writing data.
+I/O adapters for reading and writing data.
 
-Controllers handle all interaction with the file system.
-They call Use Cases but never contain transformation logic.
+All file system interaction is isolated here.
 Writes are idempotent: overwrite the target, never blind-append.
 """
 import json

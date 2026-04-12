@@ -1,14 +1,14 @@
 """
 Silver layer transforms — clean, validate, enrich.
 
-Use Cases layer: pure functions, DataFrame in → DataFrame out.
+Pure functions, DataFrame in → DataFrame out.
 Invalid records are flagged for quarantine, never silently dropped.
 """
 import pandas as pd
 import numpy as np
 
-from pipeline.entities.columns import BronzeCols as BC, SilverCols as SC
-from pipeline.config.config import (
+from pipeline.schemas.columns import BronzeCols as BC, SilverCols as SC
+from pipeline.config.validation_rules import (
     VALID_AGE_RANGE,
     VALID_BMI_RANGE,
     VALID_SLEEP_DURATION_RANGE,

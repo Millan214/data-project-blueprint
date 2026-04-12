@@ -1,8 +1,8 @@
 """Tests for Silver layer transforms."""
 import pandas as pd
 
-from pipeline.entities.columns import BronzeCols as BC, SilverCols as SC
-from pipeline.layer_transforms.silver_transforms import (
+from pipeline.schemas.columns import BronzeCols as BC, SilverCols as SC
+from pipeline.transforms.silver import (
     validate_records,
     deduplicate,
     add_bmi_category,
@@ -23,7 +23,7 @@ class TestValidateRecords:
         row = make_raw_row(person_id=99, age=200)
         df = pd.concat([bronze_df, pd.DataFrame([row])], ignore_index=True)
         # Need metadata columns for validate_records
-        from pipeline.layer_transforms.bronze_transforms import apply_bronze_transforms
+        from pipeline.transforms.bronze import apply_bronze_transforms
         df = apply_bronze_transforms(df, source_file="test.csv")
         result = validate_records(df)
         flagged = result[result[SC.IS_QUARANTINED]]
@@ -33,7 +33,7 @@ class TestValidateRecords:
     def test_invalid_gender_flagged(self, make_raw_row, bronze_df):
         row = make_raw_row(person_id=99, gender="InvalidGender")
         df = pd.concat([bronze_df, pd.DataFrame([row])], ignore_index=True)
-        from pipeline.layer_transforms.bronze_transforms import apply_bronze_transforms
+        from pipeline.transforms.bronze import apply_bronze_transforms
         df = apply_bronze_transforms(df, source_file="test.csv")
         result = validate_records(df)
         flagged = result[result[SC.IS_QUARANTINED]]
@@ -43,7 +43,7 @@ class TestValidateRecords:
     def test_multiple_failures_accumulate_reasons(self, make_raw_row):
         row = make_raw_row(person_id=99, age=200, gender="Bad")
         df = pd.DataFrame([row])
-        from pipeline.layer_transforms.bronze_transforms import apply_bronze_transforms
+        from pipeline.transforms.bronze import apply_bronze_transforms
         df = apply_bronze_transforms(df, source_file="test.csv")
         result = validate_records(df)
         reason = result.iloc[0][SC.QUARANTINE_REASON]
@@ -53,7 +53,7 @@ class TestValidateRecords:
     def test_does_not_drop_rows(self, make_raw_row):
         row = make_raw_row(person_id=99, age=200)
         df = pd.DataFrame([row])
-        from pipeline.layer_transforms.bronze_transforms import apply_bronze_transforms
+        from pipeline.transforms.bronze import apply_bronze_transforms
         df = apply_bronze_transforms(df, source_file="test.csv")
         result = validate_records(df)
         assert len(result) == 1
@@ -66,7 +66,7 @@ class TestDeduplicate:
             make_raw_row(person_id=1, age=30),
         ]
         df = pd.DataFrame(rows)
-        from pipeline.layer_transforms.bronze_transforms import apply_bronze_transforms
+        from pipeline.transforms.bronze import apply_bronze_transforms
         df = apply_bronze_transforms(df, source_file="test.csv")
         result = deduplicate(df)
         assert len(result) == 1
@@ -85,7 +85,7 @@ class TestEnrichment:
 
     def test_bmi_obese(self, make_raw_row):
         df = pd.DataFrame([make_raw_row(bmi=31.0)])
-        from pipeline.layer_transforms.bronze_transforms import apply_bronze_transforms
+        from pipeline.transforms.bronze import apply_bronze_transforms
         df = apply_bronze_transforms(df, source_file="test.csv")
         result = add_bmi_category(df)
         assert result.iloc[0][SC.BMI_CATEGORY] == "Obese"
@@ -125,7 +125,7 @@ class TestSplitValidAndQuarantine:
             make_raw_row(person_id=2, age=200),  # invalid
         ]
         df = pd.DataFrame(rows)
-        from pipeline.layer_transforms.bronze_transforms import apply_bronze_transforms
+        from pipeline.transforms.bronze import apply_bronze_transforms
         df = apply_bronze_transforms(df, source_file="test.csv")
         silver = apply_silver_transforms(df)
         valid, quarantine = split_valid_and_quarantine(silver)
