@@ -1,0 +1,3 @@
+env: dev
+storage_root: file://./data
+log_level: INFO

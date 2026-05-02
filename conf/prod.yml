@@ -1,0 +1,3 @@
+env: prod
+storage_root: s3://medallion-prod
+log_level: INFO

@@ -1,0 +1,6 @@
+currencies_allowed:
+  - EUR
+  - USD
+  - GBP
+
+quarantine_threshold: 0.20
