@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>medallion · pipeline logger</title>
+<style>
+  :root {
+    --bg: #0e1217;
+    --panel: #161b22;
+    --panel-2: #1c222b;
+    --border: #2a313c;
+    --text: #d8dee5;
+    --muted: #7d8590;
+    --green: #3fb950;
+    --red: #f85149;
+    --orange: #d29922;
+    --gray: #4a525c;
+    --mono: ui-monospace, "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif;
+    font-size: 13px;
+    display: grid;
+    grid-template-rows: 64px 1fr;
+    grid-template-columns: 280px 1fr;
+    grid-template-areas: "logo header" "rail detail";
+  }
+  header.top {
+    grid-area: header;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 24px;
+    gap: 40px;
+  }
+  .meta { display: flex; flex-direction: column; gap: 2px; }
+  .meta-label { font-size: 10px; color: var(--muted); letter-spacing: 0.1em; text-transform: uppercase; }
+  .meta-value { font-size: 14px; font-weight: 500; }
+  .layer-bar {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+  .layer-bar .seg {
+    width: 28px; height: 4px;
+    background: var(--gray); border-radius: 2px;
+  }
+  .layer-bar .seg.success { background: var(--green); }
+  .layer-bar .seg.error { background: var(--red); }
+  .layer-bar .seg.running { background: var(--red); animation: pulse 1.2s ease-in-out infinite; }
+  .layer-bar .label { color: var(--muted); margin-left: 8px; font-size: 12px; }
+
+  .logo {
+    grid-area: logo;
+    border-right: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 10px;
+    padding: 0 20px;
+  }
+  .logo .plus {
+    width: 28px; height: 28px; border-radius: 50%;
+    border: 1.5px solid var(--green);
+    color: var(--green);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; font-weight: 300;
+  }
+  .logo .name { font-weight: 600; font-size: 14px; }
+  .logo .tag { font-size: 9px; color: var(--muted); letter-spacing: 0.18em; }
+
+  aside.rail {
+    grid-area: rail;
+    border-right: 1px solid var(--border);
+    overflow-y: auto;
+    padding: 16px 12px;
+  }
+  .exec-picker {
+    width: 100%;
+    background: var(--panel);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 8px;
+    margin-bottom: 16px;
+    font: inherit;
+  }
+
+  .layer {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 10px;
+    overflow: hidden;
+  }
+  .layer.error { border-color: rgba(248,81,73,0.35); }
+  .layer-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    user-select: none;
+    cursor: pointer;
+  }
+  .layer-head:hover { background: var(--panel-2); }
+  .layer.selected > .layer-head { background: var(--panel-2); }
+  .layer-head .caret {
+    font-size: 9px; color: var(--muted);
+    display: inline-block; transition: transform 0.15s ease;
+    width: 12px; text-align: center;
+    cursor: pointer;
+  }
+  .layer.collapsed .layer-head .caret { transform: rotate(-90deg); }
+  .layer.collapsed .steps { display: none; }
+  .layer-head .icon { font-size: 14px; }
+  .layer-head .name {
+    font-weight: 600; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase;
+    flex: 1;
+  }
+  .layer-head .status-dot { margin-left: auto; }
+
+  .steps { padding: 4px 0 8px 0; border-top: 1px solid var(--border); }
+  .step {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 14px 8px 30px;
+    cursor: pointer;
+    border-left: 2px solid transparent;
+    font-size: 12px;
+  }
+  .step:hover { background: var(--panel-2); }
+  .step.selected { background: var(--panel-2); border-left-color: var(--red); }
+  .step .step-name { flex: 1; }
+  .step.pending .step-name { color: var(--muted); }
+
+  .dot {
+    width: 9px; height: 9px; border-radius: 50%;
+    flex-shrink: 0;
+    border: 1.5px solid transparent;
+  }
+  .dot.success { background: var(--green); }
+  .dot.error { background: var(--red); }
+  .dot.running { background: var(--red); animation: pulse 1.2s ease-in-out infinite; }
+  .dot.pending { background: transparent; border-color: var(--gray); }
+  .dot.skipped { background: var(--gray); }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.35; }
+  }
+
+  /* Outer execution timeline left of layer cards */
+  .timeline { position: relative; padding-left: 20px; }
+  .timeline::before {
+    content: ""; position: absolute; left: 7px; top: 18px; bottom: 18px;
+    width: 1.5px; background: var(--border);
+  }
+  .timeline .layer { position: relative; }
+  .timeline .layer::before {
+    content: ""; position: absolute;
+    left: -19px; top: 14px; width: 9px; height: 9px; border-radius: 50%;
+    background: transparent; border: 1.5px solid var(--gray);
+  }
+  .timeline .layer.success::before { background: var(--green); border-color: var(--green); }
+  .timeline .layer.error::before { background: var(--red); border-color: var(--red); }
+  .timeline .layer.running::before { background: var(--red); border-color: var(--red); animation: pulse 1.2s ease-in-out infinite; }
+
+  section.detail {
+    grid-area: detail;
+    padding: 28px 32px;
+    overflow-y: auto;
+  }
+  .detail-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    max-width: 480px;
+    gap: 18px 32px;
+    margin-bottom: 28px;
+  }
+  .detail-grid .label { font-size: 10px; color: var(--muted); letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 6px; }
+  .detail-grid .value { font-size: 15px; font-weight: 500; }
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; }
+  .pill.error { background: rgba(248,81,73,0.15); color: var(--red); }
+  .pill.success { background: rgba(63,185,80,0.15); color: var(--green); }
+  .pill.running { background: rgba(210,153,34,0.15); color: var(--orange); }
+  .pill.pending { background: var(--panel); color: var(--muted); }
+
+  .err-title {
+    color: var(--red);
+    font-size: 13px;
+    margin-bottom: 10px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .err-box {
+    border: 1px solid rgba(248,81,73,0.4);
+    border-radius: 8px;
+    padding: 18px 22px;
+    background: rgba(248,81,73,0.04);
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 1.65;
+    white-space: pre-wrap;
+    overflow-x: auto;
+  }
+  .err-box .file-line { color: var(--text); }
+  .err-box .file-path { color: #6e9eff; }
+  .err-box .file-num { color: var(--orange); }
+  .err-box .ftype { color: #d2a8ff; }
+  .err-box .err-line { color: var(--red); margin: 6px 0; }
+  .err-box .ctx { color: var(--red); }
+  .err-box .hint { color: var(--text); margin-top: 8px; }
+
+  /* Layer flow diagram (right pane when a layer is selected) */
+  .flow {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: stretch;
+    margin-top: 8px;
+  }
+  .flow-arrow {
+    display: flex; align-items: center;
+    color: var(--muted); font-size: 18px; padding: 0 2px;
+    user-select: none;
+  }
+  .flow-box {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-left-width: 3px;
+    border-radius: 6px;
+    padding: 10px 14px;
+    min-width: 160px;
+    cursor: pointer;
+    transition: border-color 0.1s, background 0.1s;
+  }
+  .flow-box:hover { background: var(--panel-2); }
+  .flow-box.success  { border-left-color: var(--green); }
+  .flow-box.error    { border-left-color: var(--red); }
+  .flow-box.running  { border-left-color: var(--orange); }
+  .flow-box.pending  { border-left-color: var(--gray); }
+  .flow-box-head {
+    display: flex; align-items: center; gap: 8px;
+    font-weight: 500; font-size: 13px;
+  }
+  .flow-box-meta {
+    font-size: 11px; color: var(--muted);
+    margin-top: 6px; font-family: var(--mono);
+  }
+
+  section.detail a {
+    color: #6e9eff;
+    text-decoration: none;
+    border-bottom: 1px dotted rgba(110,158,255,0.4);
+  }
+  section.detail a:hover { border-bottom-color: #6e9eff; }
+
+  .empty {
+    color: var(--muted);
+    font-size: 13px;
+    padding: 60px 0;
+    text-align: center;
+  }
+
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+</style>
+</head>
+<body>
+
+<div class="logo">
+  <div class="plus">+</div>
+  <div>
+    <div class="name">medallion</div>
+    <div class="tag">PIPELINE LOGGER</div>
+  </div>
+</div>
+
+<header class="top">
+  <div class="meta">
+    <div class="meta-label">Date</div>
+    <div class="meta-value" id="meta-date">—</div>
+  </div>
+  <div class="meta">
+    <div class="meta-label">Execution id</div>
+    <div class="meta-value" id="meta-id">—</div>
+  </div>
+  <div class="layer-bar" id="layer-bar"></div>
+</header>
+
+<aside class="rail">
+  <select class="exec-picker" id="exec-picker"></select>
+  <div class="timeline" id="layers"></div>
+</aside>
+
+<section class="detail" id="detail">
+  <div class="empty">No execution selected.</div>
+</section>
+
+<script>
+const LOGS_DIR = "data/_logs";
+const POLL_INDEX_MS = 3000;
+const POLL_RUN_MS = 2000;
+
+const state = {
+  executions: [],     // from index.json
+  selectedExecId: null,
+  selectedStepId: null,
+  selectedLayerOrder: null,
+  collapsedLayers: new Set(),
+  run: null,          // { meta, layers: Map<order, layerObj>, byStepId: Map }
+};
+
+// ---------- fetch helpers ----------
+async function fetchJSON(url) {
+  const res = await fetch(`${url}?t=${Date.now()}`, { cache: "no-store" });
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  return res.json();
+}
+
+async function fetchJSONL(url) {
+  const res = await fetch(`${url}?t=${Date.now()}`, { cache: "no-store" });
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  const text = await res.text();
+  const out = [];
+  for (const line of text.split("\n")) {
+    if (!line.trim()) continue;
+    try { out.push(JSON.parse(line)); } catch (_) { /* tolerate trailing partial */ }
+  }
+  return out;
+}
+
+// ---------- replay events into a render model ----------
+function buildRunModel(events) {
+  const meta = { execStarted: null, execFinished: null, status: "pending", durationMs: null, layersCompleted: 0, layersSeen: 0, pipeline: null };
+  const layers = new Map();      // layer_order -> { order, name, status, steps: Map }
+  const byStepId = new Map();    // stepId -> stepObj
+
+  for (const ev of events) {
+    if (ev.event === "execution_started") {
+      meta.execStarted = ev.ts;
+      meta.status = "running";
+      meta.pipeline = ev.pipeline;
+    } else if (ev.event === "execution_finished") {
+      meta.execFinished = ev.ts;
+      meta.status = ev.status || "success";
+      meta.durationMs = ev.duration_ms ?? null;
+      meta.layersCompleted = ev.layers_completed ?? 0;
+      meta.layersSeen = ev.layers_seen ?? 0;
+    } else if (ev.event === "step_started" || ev.event === "step_finished") {
+      const lo = ev.layer_order;
+      if (!layers.has(lo)) {
+        layers.set(lo, { order: lo, name: ev.layer, status: "pending", steps: new Map() });
+      }
+      const layer = layers.get(lo);
+      const sid = ev.step_id;
+      let step = byStepId.get(sid);
+      if (!step) {
+        step = {
+          id: sid, name: ev.step_name, layer: ev.layer, layerOrder: lo, order: ev.step_order,
+          description: null,
+          status: "pending", durationMs: null, rowsIn: null, rowsOut: null, error: null, extra: {},
+        };
+        byStepId.set(sid, step);
+        layer.steps.set(ev.step_order, step);
+      }
+      if (ev.description != null) step.description = ev.description;
+      if (ev.event === "step_started") {
+        step.status = "running";
+        if (ev.rows_in != null) step.rowsIn = ev.rows_in;
+      } else {
+        step.status = ev.status || "success";
+        step.durationMs = ev.duration_ms ?? null;
+        if (ev.rows_in != null) step.rowsIn = ev.rows_in;
+        if (ev.rows_out != null) step.rowsOut = ev.rows_out;
+        if (ev.error) step.error = ev.error;
+        // collect any extra fields (output_path, source_file, quarantined, etc.)
+        const standard = new Set(["ts","execution_id","pipeline","event","level","status","layer","layer_order","step_id","step_name","step_order","description","duration_ms","rows_in","rows_out","error"]);
+        for (const [k, v] of Object.entries(ev)) {
+          if (!standard.has(k)) step.extra[k] = v;
+        }
+      }
+    }
+  }
+
+  // derive layer status: error if any error step; else running if any running; else success if all success; else pending
+  for (const layer of layers.values()) {
+    const steps = [...layer.steps.values()];
+    if (steps.some(s => s.status === "error")) layer.status = "error";
+    else if (steps.some(s => s.status === "running")) layer.status = "running";
+    else if (steps.length && steps.every(s => s.status === "success")) layer.status = "success";
+    else layer.status = "pending";
+  }
+
+  return { meta, layers, byStepId };
+}
+
+// ---------- rendering ----------
+function fmtDuration(ms) {
+  if (ms == null) return "—";
+  if (ms < 1000) return `${ms}ms`;
+  const s = ms / 1000;
+  if (s < 60) return `${s.toFixed(1)}s`;
+  const m = Math.floor(s / 60);
+  const r = Math.round(s - m * 60);
+  return `${m}min ${r.toString().padStart(2, "0")}s`;
+}
+function fmtDate(ts) {
+  if (!ts) return "—";
+  const d = new Date(ts);
+  return `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}/${d.getFullYear()}`;
+}
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+
+const LAYER_ICON = { landing: "📈", bronze: "🥉", silver: "🥈", gold: "🥇" };
+
+function renderHeader(run) {
+  document.getElementById("meta-date").textContent = fmtDate(run?.meta?.execStarted);
+  document.getElementById("meta-id").textContent = state.selectedExecId != null ? `#${state.selectedExecId}` : "—";
+
+  const bar = document.getElementById("layer-bar");
+  bar.innerHTML = "";
+  const layerArr = run ? [...run.layers.values()].sort((a,b)=>a.order-b.order) : [];
+  // pad to known total; if no layer_seen meta yet, just show what we have
+  for (const l of layerArr) {
+    const seg = document.createElement("div");
+    seg.className = `seg ${l.status}`;
+    bar.appendChild(seg);
+  }
+  if (layerArr.length) {
+    const completed = layerArr.filter(l => l.status === "success").length;
+    const total = run.meta.layersSeen || layerArr.length;
+    const lbl = document.createElement("div");
+    lbl.className = "label";
+    lbl.textContent = `${completed}/${total} layers`;
+    bar.appendChild(lbl);
+  }
+}
+
+function renderRail(run) {
+  const root = document.getElementById("layers");
+  root.innerHTML = "";
+  if (!run) return;
+  const layerArr = [...run.layers.values()].sort((a,b)=>a.order-b.order);
+  for (const layer of layerArr) {
+    const card = document.createElement("div");
+    const isCollapsed = state.collapsedLayers.has(layer.order);
+    const isSelected = state.selectedLayerOrder === layer.order && state.selectedStepId == null;
+    card.className = `layer ${layer.status} ${isCollapsed ? "collapsed" : ""} ${isSelected ? "selected" : ""}`;
+    const icon = LAYER_ICON[layer.name] || "•";
+    card.innerHTML = `
+      <div class="layer-head">
+        <span class="caret">▼</span>
+        <span class="icon">${icon}</span>
+        <span class="name">${escapeHtml(layer.name)}</span>
+        <span class="dot ${layer.status}"></span>
+      </div>
+      <div class="steps"></div>`;
+    const head = card.querySelector(".layer-head");
+    const caret = card.querySelector(".caret");
+    caret.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (state.collapsedLayers.has(layer.order)) state.collapsedLayers.delete(layer.order);
+      else state.collapsedLayers.add(layer.order);
+      renderRail(state.run);
+    });
+    head.addEventListener("click", () => {
+      state.selectedLayerOrder = layer.order;
+      state.selectedStepId = null;
+      renderRail(state.run);
+      renderDetail(state.run);
+    });
+    const stepsDiv = card.querySelector(".steps");
+    const steps = [...layer.steps.values()].sort((a,b)=>a.order-b.order);
+    for (const s of steps) {
+      const row = document.createElement("div");
+      row.className = `step ${s.status} ${state.selectedStepId === s.id ? "selected" : ""}`;
+      row.title = s.description || "";
+      row.innerHTML = `<span class="dot ${s.status}"></span><span class="step-name">${escapeHtml(s.name)}</span>`;
+      row.addEventListener("click", (e) => {
+        e.stopPropagation();
+        state.selectedStepId = s.id;
+        state.selectedLayerOrder = null;
+        renderRail(state.run);
+        renderDetail(state.run);
+      });
+      stepsDiv.appendChild(row);
+    }
+    root.appendChild(card);
+  }
+}
+
+function colorizeTraceback(tb) {
+  const esc = escapeHtml(tb);
+  return esc
+    .replace(/^Traceback \(most recent call last\):/m, m => `<span class="err-line">${m}</span>`)
+    .replace(/File "([^"]+)", line (\d+), in (\S+)/g,
+      (_, f, n, fn) => `File <span class="file-path">"${f}"</span>, line <span class="file-num">${n}</span>, in <span class="ftype">${fn}</span>`)
+    .replace(/^([A-Z][A-Za-z]*Error.*$)/m, m => `<span class="err-line">${m}</span>`);
+}
+
+function renderDetail(run) {
+  const el = document.getElementById("detail");
+  if (!run) { el.innerHTML = `<div class="empty">No execution selected.</div>`; return; }
+
+  // Layer-level view: render flow diagram of steps.
+  if (state.selectedStepId == null && state.selectedLayerOrder != null) {
+    const layer = run.layers.get(state.selectedLayerOrder);
+    if (layer) { el.innerHTML = renderLayerFlow(layer); return; }
+  }
+
+  let step = state.selectedStepId ? run.byStepId.get(state.selectedStepId) : null;
+  if (!step) {
+    // default selection: first errored, else last running, else last success
+    const all = [...run.byStepId.values()].sort((a,b)=>a.layerOrder*100+a.order - (b.layerOrder*100+b.order));
+    step = all.find(s => s.status === "error") || all.findLast?.(s => s.status === "running") || all[all.length-1];
+    state.selectedStepId = step?.id ?? null;
+  }
+  if (!step) { el.innerHTML = `<div class="empty">No steps yet.</div>`; return; }
+
+  const pillClass = step.status;
+  const pillText = (step.status || "pending").toUpperCase();
+
+  let body = `
+    <div class="detail-grid">
+      <div>
+        <div class="label">Layer</div>
+        <div class="value">${escapeHtml(capitalize(step.layer))}</div>
+      </div>
+      <div>
+        <div class="label">Result</div>
+        <div class="value"><span class="pill ${pillClass}">${pillText}</span></div>
+      </div>
+      <div>
+        <div class="label">Pipe</div>
+        <div class="value">${escapeHtml(step.name)}</div>
+      </div>
+      <div>
+        <div class="label">Duration</div>
+        <div class="value">${fmtDuration(step.durationMs)}</div>
+      </div>`;
+  if (step.description) {
+    body += `
+      <div style="grid-column: 1 / -1;">
+        <div class="label">Description</div>
+        <div class="value" style="font-weight: 400; font-size: 13px; color: var(--text); line-height: 1.5;">${escapeHtml(step.description)}</div>
+      </div>`;
+  }
+  if (step.rowsIn != null || step.rowsOut != null) {
+    body += `
+      <div>
+        <div class="label">Rows in</div>
+        <div class="value">${step.rowsIn?.toLocaleString() ?? "—"}</div>
+      </div>
+      <div>
+        <div class="label">Rows out</div>
+        <div class="value">${step.rowsOut?.toLocaleString() ?? "—"}</div>
+      </div>`;
+  }
+  body += `</div>`;
+
+  if (step.error) {
+    let extra = "";
+    if (step.error.context) {
+      const lines = Object.entries(step.error.context).map(([k,v]) =>
+        `<div class="ctx">→ ${escapeHtml(prettyKey(k))}: ${formatValHtml(v)}</div>`).join("");
+      extra = `\n${lines}`;
+      if (step.error.context.hint) {
+        // already included above; nothing extra
+      }
+    }
+    body += `
+      <div class="err-title">⚠ ERROR TRACE</div>
+      <div class="err-box">${colorizeTraceback(step.error.traceback || "")}${extra}</div>`;
+  } else if (Object.keys(step.extra).length) {
+    const lines = Object.entries(step.extra).map(([k,v]) =>
+      `<div><span style="color:var(--muted)">${escapeHtml(prettyKey(k))}:</span> ${formatValHtml(v)}</div>`).join("");
+    body += `<div style="font-family: var(--mono); font-size: 12px; line-height: 1.8; color: var(--text); margin-top: 8px;">${lines}</div>`;
+  }
+  el.innerHTML = body;
+}
+
+function renderLayerFlow(layer) {
+  const steps = [...layer.steps.values()].sort((a,b)=>a.order-b.order);
+  const totalMs = steps.reduce((sum, s) => sum + (s.durationMs ?? 0), 0);
+  const status = layer.status;
+
+  const boxes = steps.map((s, i) => {
+    const meta = [
+      s.durationMs != null ? fmtDuration(s.durationMs) : null,
+      s.rowsIn != null ? `in ${s.rowsIn.toLocaleString()}` : null,
+      s.rowsOut != null ? `out ${s.rowsOut.toLocaleString()}` : null,
+    ].filter(Boolean).join(" · ");
+    const box = `
+      <div class="flow-box ${s.status}" data-step-id="${escapeHtml(s.id)}" title="${escapeHtml(s.description || "")}">
+        <div class="flow-box-head">
+          <span class="dot ${s.status}"></span>
+          <span>${escapeHtml(s.name)}</span>
+        </div>
+        ${meta ? `<div class="flow-box-meta">${meta}</div>` : ""}
+      </div>`;
+    const arrow = i < steps.length - 1 ? `<div class="flow-arrow">→</div>` : "";
+    return box + arrow;
+  }).join("");
+
+  return `
+    <div class="detail-grid">
+      <div><div class="label">Layer</div><div class="value">${escapeHtml(capitalize(layer.name))}</div></div>
+      <div><div class="label">Result</div><div class="value"><span class="pill ${status}">${status.toUpperCase()}</span></div></div>
+      <div><div class="label">Steps</div><div class="value">${steps.length}</div></div>
+      <div><div class="label">Total duration</div><div class="value">${fmtDuration(totalMs || null)}</div></div>
+    </div>
+    <div class="flow">${boxes || `<div class="empty">No steps yet.</div>`}</div>`;
+}
+
+function capitalize(s) { return s ? s[0].toUpperCase() + s.slice(1) : s; }
+function prettyKey(k) { return k.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()); }
+function formatVal(v) {
+  if (v == null) return "—";
+  if (typeof v === "object") return JSON.stringify(v);
+  return String(v);
+}
+
+// Convert a stored path (Windows or POSIX) into a URL the local http server
+// can serve. Returns null if the value doesn't look like a relative project path.
+function pathToUrl(v) {
+  if (typeof v !== "string") return null;
+  if (!/[\/\\]/.test(v)) return null;
+  if (/^https?:\/\//i.test(v)) return null;
+  if (/^[A-Za-z]:[\/\\]/.test(v)) return null;  // absolute Windows path — not servable
+  if (/^\//.test(v)) return null;               // absolute POSIX path
+  return v.replace(/\\/g, "/").split("/").map(encodeURIComponent).join("/");
+}
+
+// HTML-safe value renderer that turns project-relative paths into clickable
+// links that open the OS file explorer (handled by the custom server).
+function formatValHtml(v) {
+  if (v == null) return "—";
+  if (typeof v === "object") return escapeHtml(JSON.stringify(v));
+  const s = String(v);
+  if (pathToUrl(s)) {
+    return `<a href="#" class="path-link" data-open-path="${escapeHtml(s)}" title="Open in file explorer">${escapeHtml(s)}</a>`;
+  }
+  return escapeHtml(s);
+}
+
+function renderExecPicker() {
+  const sel = document.getElementById("exec-picker");
+  const cur = state.selectedExecId;
+  sel.innerHTML = "";
+  if (!state.executions.length) {
+    const opt = document.createElement("option");
+    opt.textContent = "(no executions yet)";
+    sel.appendChild(opt);
+    return;
+  }
+  for (const e of [...state.executions].reverse()) {
+    const opt = document.createElement("option");
+    opt.value = String(e.id);
+    const when = e.started_at ? new Date(e.started_at).toLocaleTimeString() : "";
+    opt.textContent = `#${e.id} · ${e.status} · ${when}`;
+    if (e.id === cur) opt.selected = true;
+    sel.appendChild(opt);
+  }
+}
+
+// Detail-pane click delegate: path links + flow-box step selection.
+document.getElementById("detail").addEventListener("click", (e) => {
+  const a = e.target.closest("a.path-link");
+  if (a) {
+    e.preventDefault();
+    const p = a.dataset.openPath;
+    if (!p) return;
+    fetch(`/open?path=${encodeURIComponent(p)}`, { method: "GET" })
+      .then(r => { if (!r.ok) console.warn("open failed:", r.status, r.statusText); })
+      .catch(err => console.warn("open failed:", err));
+    return;
+  }
+  const box = e.target.closest(".flow-box[data-step-id]");
+  if (box) {
+    state.selectedStepId = box.dataset.stepId;
+    state.selectedLayerOrder = null;
+    renderRail(state.run);
+    renderDetail(state.run);
+  }
+});
+
+document.getElementById("exec-picker").addEventListener("change", (e) => {
+  const id = parseInt(e.target.value, 10);
+  if (!isNaN(id)) {
+    state.selectedExecId = id;
+    state.selectedStepId = null;
+    state.run = null;
+    pollRun();
+  }
+});
+
+// ---------- polling ----------
+async function pollIndex() {
+  try {
+    const data = await fetchJSON(`${LOGS_DIR}/index.json`);
+    state.executions = data.executions || [];
+    if (state.selectedExecId == null && state.executions.length) {
+      state.selectedExecId = state.executions[state.executions.length - 1].id;
+      pollRun();
+    }
+    renderExecPicker();
+  } catch (_) {
+    // file missing or unreachable; stay silent
+  }
+}
+
+async function pollRun() {
+  if (state.selectedExecId == null) return;
+  const e = state.executions.find(x => x.id === state.selectedExecId);
+  if (!e) return;
+  try {
+    const events = await fetchJSONL(`${LOGS_DIR}/${e.file}`);
+    state.run = buildRunModel(events);
+    renderHeader(state.run);
+    renderRail(state.run);
+    renderDetail(state.run);
+  } catch (_) {
+    // ignore transient errors
+  }
+}
+
+pollIndex();
+pollRun();
+setInterval(pollIndex, POLL_INDEX_MS);
+setInterval(pollRun, POLL_RUN_MS);
+</script>
+</body>
+</html>

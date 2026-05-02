@@ -54,6 +54,7 @@ class Settings(BaseModel):
     bronze_dir: str = "01_bronze"
     silver_dir: str = "02_silver"
     gold_dir: str = "03_gold"
+    logs_dir: str = "_logs"
 
     # --- Orders pipeline -----------------------------------------------------
     orders_landing_file: str = "orders_raw.csv"
