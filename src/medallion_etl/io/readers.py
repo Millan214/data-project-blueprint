@@ -14,6 +14,14 @@ def read_bronze(table: str) -> pd.DataFrame:
     return pd.concat([pd.read_parquet(f) for f in files], ignore_index=True)
 
 
+def read_silver(table: str) -> pd.DataFrame:
+    root = Path(uri_for("silver", table).removeprefix("file://"))
+    files = sorted(root.rglob("*.parquet"))
+    if not files:
+        return pd.DataFrame()
+    return pd.concat([pd.read_parquet(f) for f in files], ignore_index=True)
+
+
 def read_csv_landing(filename: str) -> pd.DataFrame:
-    root = Path(settings.storage_root.removeprefix("file://")) / "00_landing"
+    root = Path(settings.storage_root.removeprefix("file://")) / settings.landing_dir
     return pd.read_csv(root / filename)

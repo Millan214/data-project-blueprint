@@ -11,10 +11,10 @@ from medallion_etl.settings import settings
 @pytest.fixture(autouse=True)
 def _clean_data_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(settings, "storage_root", f"file://{tmp_path.as_posix()}")
-    landing = tmp_path / "00_landing"
+    landing = tmp_path / settings.landing_dir
     landing.mkdir(parents=True)
-    fixture = Path(__file__).resolve().parents[1] / "fixtures" / "orders_raw.csv"
-    shutil.copy(fixture, landing / "orders_raw.csv")
+    fixture = Path(__file__).resolve().parents[1] / "fixtures" / settings.orders_landing_file
+    shutil.copy(fixture, landing / settings.orders_landing_file)
     yield
 
 

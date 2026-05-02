@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import pandas as pd
 
+from medallion_etl.settings import settings
+
 
 def cast_types(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
@@ -10,7 +12,7 @@ def cast_types(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def dedupe(df: pd.DataFrame) -> pd.DataFrame:
-    return df.drop_duplicates(subset=["order_id"], keep="last").reset_index(drop=True)
+    return df.drop_duplicates(subset=settings.orders_dedupe_keys, keep="last").reset_index(drop=True)
 
 
 def normalize_currency(df: pd.DataFrame) -> pd.DataFrame:
