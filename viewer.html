@@ -114,7 +114,8 @@
   }
   .layer.collapsed .layer-head .caret { transform: rotate(-90deg); }
   .layer.collapsed .steps { display: none; }
-  .layer-head .icon { font-size: 14px; }
+  .layer-head .icon { font-size: 14px; display: inline-flex; align-items: center; }
+  .layer-head .icon img { width: 18px; height: 18px; display: block; image-rendering: pixelated; }
   .layer-head .name {
     font-weight: 600; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase;
     flex: 1;
@@ -415,7 +416,12 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 }
 
-const LAYER_ICON = { landing: "📈", bronze: "🥉", silver: "🥈", gold: "🥇" };
+const LAYER_ICON = {
+  landing: "📈",
+  bronze: `<img src="public/png/bronze_ingot.png" alt="bronze">`,
+  silver: `<img src="public/png/silver_ingot.png" alt="silver">`,
+  gold:   `<img src="public/png/gold_ingot.png" alt="gold">`,
+};
 
 function renderHeader(run) {
   document.getElementById("meta-date").textContent = fmtDate(run?.meta?.execStarted);
