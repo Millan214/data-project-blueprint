@@ -4,38 +4,78 @@ One execution = one JSONL file at `<storage_root>/<logs_dir>/run-NNNNNN.jsonl`.
 
 Usage:
 
-    from medallion_etl.observability.pipeline_logger import logger
+    loginfo = build_loginfo({
+        "bronze.transform": {
+            "layer": "bronze", "layer_order": 1,
+            "step_name": "Transforming", "step_order": 1,
+            "description": "Casts types and stamps provenance.",
+            "rows_in_fn": lambda df, **_: len(df),
+            "rows_out_fn": len,
+        },
+    })
 
-    with logger.execution(pipeline="medallion"):
-        with logger.step(
-            layer="bronze", layer_order=1,
-            step_id="bronze.transform_types",
-            step_name="Transforming Types",
-            step_order=1,
-            rows_in=50_214,
-        ) as step:
-            df = transform(df)
-            step.rows_out(len(df))
+    @logger.step(loginfo["bronze.transform"])
+    def transform(df: pd.DataFrame) -> pd.DataFrame:
+        return df.assign(...)
 
-If no execution is active, `step()` is a no-op (so unit tests of pure
+Step bodies stay pure — no logger imports inside. All event shaping lives in
+the loginfo entry's optional shaper callables (rows_in_fn, rows_out_fn,
+extra_in_fn, extra_out_fn).
+
+If no execution is active, the decorator is a no-op (so unit tests of pure
 transforms keep working without setup).
 """
 
 from __future__ import annotations
 
+import inspect
 import json
 import re
 import threading
 import time
 import traceback
+from collections.abc import Callable
 from contextlib import contextmanager
 from datetime import UTC, datetime
+from functools import wraps
 from pathlib import Path
-from typing import IO, Any, Iterator, Self
+from typing import IO, Any, Iterator, Self, TypedDict, TypeVar
 
 from medallion_etl.settings import settings
 
+F = TypeVar("F", bound=Callable[..., Any])
+
 _RUN_FILE_RE = re.compile(r"^run-(\d{6})\.jsonl$")
+
+
+class StepInfo(TypedDict, total=False):
+    """Static + shaper metadata for one logged step.
+
+    Required keys: layer, layer_order, step_id, step_name, step_order, description.
+    `step_id` is auto-injected by `build_loginfo` from the dict key.
+
+    Optional shapers:
+        rows_in_fn(**bound_args)  -> int
+        rows_out_fn(result)       -> int
+        extra_in_fn(**bound_args) -> dict
+        extra_out_fn(result)      -> dict
+    """
+
+    layer: str
+    layer_order: int
+    step_id: str
+    step_name: str
+    step_order: int
+    description: str
+    rows_in_fn: Callable[..., int]
+    rows_out_fn: Callable[[Any], int]
+    extra_in_fn: Callable[..., dict[str, Any]]
+    extra_out_fn: Callable[[Any], dict[str, Any]]
+
+
+def build_loginfo(entries: dict[str, dict[str, Any]]) -> dict[str, StepInfo]:
+    """Inject each entry's `step_id` from its dict key, leaving other fields untouched."""
+    return {sid: {"step_id": sid, **spec} for sid, spec in entries.items()}  # type: ignore[misc]
 
 
 def _logs_root() -> Path:
@@ -82,30 +122,6 @@ def _now_iso() -> str:
     return datetime.now(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
-class StepHandle:
-    """Returned by `logger.step(...)`. Lets the caller attach extra context."""
-
-    def __init__(self, *, active: bool) -> None:
-        self._active = active
-        self._rows_out: int | None = None
-        self._error_context: dict[str, Any] = {}
-        self._extra: dict[str, Any] = {}
-
-    def rows_out(self, n: int) -> None:
-        if self._active:
-            self._rows_out = int(n)
-
-    def add_context(self, **kwargs: Any) -> None:
-        """Attach domain-specific fields to a future error event."""
-        if self._active:
-            self._error_context.update(kwargs)
-
-    def add_extra(self, **kwargs: Any) -> None:
-        """Attach free-form fields to the step_finished event."""
-        if self._active:
-            self._extra.update(kwargs)
-
-
 class PipelineLogger:
     """Module-level singleton. One open execution at a time, per process."""
 
@@ -131,92 +147,113 @@ class PipelineLogger:
         else:
             self._close(status="success")
 
-    @contextmanager
-    def step(
-        self,
-        *,
-        layer: str,
-        layer_order: int,
-        step_id: str,
-        step_name: str,
-        step_order: int,
-        description: str,
-        rows_in: int | None = None,
-    ) -> Iterator[StepHandle]:
-        """Wrap a unit of work and emit start/finish events.
+    def step(self, info: StepInfo) -> Callable[[F], F]:
+        """Decorator: wrap a function so each call emits start/finish events.
 
-        ``description`` is required: a one-line human-readable explanation of
-        what the step does, surfaced by the viewer's detail pane.
+        Step bodies stay pure — no logger imports inside. All event shaping
+        lives in `info` (a `StepInfo` entry, typically built via `build_loginfo`).
         """
-        if not description or not description.strip():
-            raise ValueError(
-                f"step {step_id!r} is missing a description; every pipe log must have one"
-            )
-        if self._fh is None:
-            yield StepHandle(active=False)
-            return
+        self._validate_info(info)
 
-        self._layers_seen.add(layer_order)
-        handle = StepHandle(active=True)
-        t0 = time.monotonic()
+        def decorator(func: F) -> F:
+            sig = inspect.signature(func)
 
-        self._emit(
-            event="step_started",
-            level="info",
-            status="running",
-            layer=layer,
-            layer_order=layer_order,
-            step_id=step_id,
-            step_name=step_name,
-            step_order=step_order,
-            description=description,
-            rows_in=rows_in,
-        )
+            @wraps(func)
+            def wrapper(*args: Any, **kwargs: Any) -> Any:
+                if self._fh is None:
+                    return func(*args, **kwargs)
 
-        try:
-            yield handle
-        except BaseException as exc:
-            self._emit(
-                event="step_finished",
-                level="error",
-                status="error",
-                layer=layer,
-                layer_order=layer_order,
-                step_id=step_id,
-                step_name=step_name,
-                step_order=step_order,
-                description=description,
-                duration_ms=int((time.monotonic() - t0) * 1000),
-                rows_in=rows_in,
-                rows_out=handle._rows_out,
-                error={
-                    "type": type(exc).__name__,
-                    "message": str(exc),
-                    "traceback": "".join(traceback.format_exception(exc)),
-                    "context": handle._error_context or None,
-                },
-                **handle._extra,
-            )
-            raise
-        else:
-            self._layers_completed.add(layer_order)
-            self._emit(
-                event="step_finished",
-                level="info",
-                status="success",
-                layer=layer,
-                layer_order=layer_order,
-                step_id=step_id,
-                step_name=step_name,
-                step_order=step_order,
-                description=description,
-                duration_ms=int((time.monotonic() - t0) * 1000),
-                rows_in=rows_in,
-                rows_out=handle._rows_out,
-                **handle._extra,
-            )
+                bound = sig.bind_partial(*args, **kwargs).arguments
+                rows_in = self._call_shaper(info.get("rows_in_fn"), kwargs=bound)
+                extra_in = self._call_shaper(info.get("extra_in_fn"), kwargs=bound) or {}
+
+                self._layers_seen.add(info["layer_order"])
+                t0 = time.monotonic()
+                self._emit(
+                    event="step_started",
+                    level="info",
+                    status="running",
+                    layer=info["layer"],
+                    layer_order=info["layer_order"],
+                    step_id=info["step_id"],
+                    step_name=info["step_name"],
+                    step_order=info["step_order"],
+                    description=info["description"],
+                    rows_in=rows_in,
+                )
+
+                try:
+                    result = func(*args, **kwargs)
+                except BaseException as exc:
+                    self._emit(
+                        event="step_finished",
+                        level="error",
+                        status="error",
+                        layer=info["layer"],
+                        layer_order=info["layer_order"],
+                        step_id=info["step_id"],
+                        step_name=info["step_name"],
+                        step_order=info["step_order"],
+                        description=info["description"],
+                        duration_ms=int((time.monotonic() - t0) * 1000),
+                        rows_in=rows_in,
+                        error={
+                            "type": type(exc).__name__,
+                            "message": str(exc),
+                            "traceback": "".join(traceback.format_exception(exc)),
+                            "context": extra_in or None,
+                        },
+                        **extra_in,
+                    )
+                    raise
+
+                rows_out = self._call_shaper(info.get("rows_out_fn"), positional=(result,))
+                extra_out = self._call_shaper(info.get("extra_out_fn"), positional=(result,)) or {}
+
+                self._layers_completed.add(info["layer_order"])
+                self._emit(
+                    event="step_finished",
+                    level="info",
+                    status="success",
+                    layer=info["layer"],
+                    layer_order=info["layer_order"],
+                    step_id=info["step_id"],
+                    step_name=info["step_name"],
+                    step_order=info["step_order"],
+                    description=info["description"],
+                    duration_ms=int((time.monotonic() - t0) * 1000),
+                    rows_in=rows_in,
+                    rows_out=rows_out,
+                    **{**extra_in, **extra_out},
+                )
+                return result
+
+            return wrapper  # type: ignore[return-value]
+
+        return decorator
 
     # ---- internals -----------------------------------------------------
+
+    @staticmethod
+    def _validate_info(info: StepInfo) -> None:
+        for required in ("layer", "layer_order", "step_id", "step_name", "step_order", "description"):
+            if required not in info:
+                raise ValueError(f"StepInfo missing required key {required!r}: {info!r}")
+        if not str(info["description"]).strip():
+            raise ValueError(
+                f"step {info['step_id']!r} is missing a description; every pipe log must have one"
+            )
+
+    @staticmethod
+    def _call_shaper(
+        fn: Callable[..., Any] | None,
+        *,
+        positional: tuple[Any, ...] = (),
+        kwargs: dict[str, Any] | None = None,
+    ) -> Any:
+        if fn is None:
+            return None
+        return fn(*positional, **(kwargs or {}))
 
     def _open(self, *, pipeline: str) -> None:
         with self._lock:

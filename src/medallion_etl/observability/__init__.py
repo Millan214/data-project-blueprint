@@ -1,3 +1,7 @@
-from medallion_etl.observability.pipeline_logger import StepHandle, logger
+from medallion_etl.observability.pipeline_logger import (
+    StepInfo,
+    build_loginfo,
+    logger,
+)
 
-__all__ = ["logger", "StepHandle"]
+__all__ = ["build_loginfo", "logger", "StepInfo"]
