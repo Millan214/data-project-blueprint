@@ -1,14 +1,14 @@
-"""Append-only event log for pipeline runs.
+"""Registro de eventos append-only para ejecuciones de pipeline.
 
-One execution = one JSONL file at `<storage_root>/<logs_dir>/run-NNNNNN.jsonl`.
+Una ejecución = un archivo JSONL en `<storage_root>/<logs_dir>/run-NNNNNN.jsonl`.
 
-Usage:
+Uso:
 
     loginfo = build_loginfo({
         "bronze.transform": {
             "layer": "bronze", "layer_order": 1,
-            "step_name": "Transforming", "step_order": 1,
-            "description": "Casts types and stamps provenance.",
+            "step_name": "Transformando", "step_order": 1,
+            "description": "Convierte tipos y registra procedencia.",
             "rows_in_fn": lambda df, **_: len(df),
             "rows_out_fn": len,
         },
@@ -18,12 +18,12 @@ Usage:
     def transform(df: pd.DataFrame) -> pd.DataFrame:
         return df.assign(...)
 
-Step bodies stay pure — no logger imports inside. All event shaping lives in
-the loginfo entry's optional shaper callables (rows_in_fn, rows_out_fn,
-extra_in_fn, extra_out_fn).
+Los cuerpos de los steps permanecen puros — sin imports del logger en su
+interior. Toda la conformación del evento vive en los callables opcionales
+de cada entrada de loginfo (rows_in_fn, rows_out_fn, extra_in_fn, extra_out_fn).
 
-If no execution is active, the decorator is a no-op (so unit tests of pure
-transforms keep working without setup).
+Si no hay una ejecución activa, el decorator es no-op (los tests unitarios
+de transformaciones puras siguen funcionando sin necesidad de setup).
 """
 
 from __future__ import annotations
@@ -49,12 +49,12 @@ _RUN_FILE_RE = re.compile(r"^run-(\d{6})\.jsonl$")
 
 
 class StepInfo(TypedDict, total=False):
-    """Static + shaper metadata for one logged step.
+    """Metadata estática + shapers para un step registrado.
 
-    Required keys: layer, layer_order, step_id, step_name, step_order, description.
-    `step_id` is auto-injected by `build_loginfo` from the dict key.
+    Claves requeridas: layer, layer_order, step_id, step_name, step_order, description.
+    `step_id` se inyecta automáticamente desde la clave del diccionario en `build_loginfo`.
 
-    Optional shapers:
+    Shapers opcionales:
         rows_in_fn(**bound_args)  -> int
         rows_out_fn(result)       -> int
         extra_in_fn(**bound_args) -> dict
@@ -74,7 +74,7 @@ class StepInfo(TypedDict, total=False):
 
 
 def build_loginfo(entries: dict[str, dict[str, Any]]) -> dict[str, StepInfo]:
-    """Inject each entry's `step_id` from its dict key, leaving other fields untouched."""
+    """Inyecta el `step_id` de cada entrada desde su clave, dejando el resto intacto."""
     return {sid: {"step_id": sid, **spec} for sid, spec in entries.items()}  # type: ignore[misc]
 
 
@@ -88,7 +88,7 @@ def _index_path(root: Path) -> Path:
 
 
 def _index_upsert(root: Path, entry: dict[str, Any]) -> None:
-    """Add or update an entry in `_logs/index.json` keyed by execution id."""
+    """Agrega o actualiza una entrada en `_logs/index.json` indexada por execution id."""
     path = _index_path(root)
     data: dict[str, Any] = {"executions": []}
     if path.exists():
@@ -123,7 +123,7 @@ def _now_iso() -> str:
 
 
 class PipelineLogger:
-    """Module-level singleton. One open execution at a time, per process."""
+    """Singleton a nivel de módulo. Una ejecución abierta a la vez, por proceso."""
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
@@ -134,7 +134,7 @@ class PipelineLogger:
         self._layers_seen: set[int] = set()
         self._layers_completed: set[int] = set()
 
-    # ---- public API ----------------------------------------------------
+    # ---- API pública ---------------------------------------------------
 
     @contextmanager
     def execution(self, *, pipeline: str) -> Iterator[Self]:
@@ -148,10 +148,11 @@ class PipelineLogger:
             self._close(status="success")
 
     def step(self, info: StepInfo) -> Callable[[F], F]:
-        """Decorator: wrap a function so each call emits start/finish events.
+        """Decorator: envuelve una función para que cada llamada emita eventos de inicio/fin.
 
-        Step bodies stay pure — no logger imports inside. All event shaping
-        lives in `info` (a `StepInfo` entry, typically built via `build_loginfo`).
+        Los cuerpos del step permanecen puros — sin imports del logger en su interior.
+        Toda la conformación del evento vive en `info` (una entrada `StepInfo`,
+        construida típicamente con `build_loginfo`).
         """
         self._validate_info(info)
 
@@ -160,6 +161,8 @@ class PipelineLogger:
 
             @wraps(func)
             def wrapper(*args: Any, **kwargs: Any) -> Any:
+                # Si no hay ejecución activa, ejecutar la función sin instrumentación
+                # (permite que tests unitarios llamen los steps directamente).
                 if self._fh is None:
                     return func(*args, **kwargs)
 
@@ -185,6 +188,8 @@ class PipelineLogger:
                 try:
                     result = func(*args, **kwargs)
                 except BaseException as exc:
+                    # Cualquier excepción en el step queda etiquetada como
+                    # `status="error"` con el traceback completo y luego se re-lanza.
                     self._emit(
                         event="step_finished",
                         level="error",
@@ -232,10 +237,11 @@ class PipelineLogger:
 
         return decorator
 
-    # ---- internals -----------------------------------------------------
+    # ---- internos ------------------------------------------------------
 
     @staticmethod
     def _validate_info(info: StepInfo) -> None:
+        """Verifica que el StepInfo tenga las claves obligatorias y una description no vacía."""
         for required in ("layer", "layer_order", "step_id", "step_name", "step_order", "description"):
             if required not in info:
                 raise ValueError(f"StepInfo missing required key {required!r}: {info!r}")
@@ -251,6 +257,7 @@ class PipelineLogger:
         positional: tuple[Any, ...] = (),
         kwargs: dict[str, Any] | None = None,
     ) -> Any:
+        """Invoca un shaper opcional de loginfo; devuelve None si no está definido."""
         if fn is None:
             return None
         return fn(*positional, **(kwargs or {}))
@@ -319,6 +326,11 @@ class PipelineLogger:
             self._t_started = None
 
     def _emit(self, **fields: Any) -> None:
+        """Escribe una línea JSONL en el archivo de la ejecución activa.
+
+        Hace flush inmediato para que los logs sean visibles incluso si el
+        proceso se detiene abruptamente.
+        """
         if self._fh is None:
             return
         line = {
