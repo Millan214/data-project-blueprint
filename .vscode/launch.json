@@ -1,0 +1,61 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "🥉 Run Bronze",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "medallion_etl.cli",
+            "args": ["bronze"],
+            "python": "${workspaceFolder}/.venv/Scripts/python.exe",
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "🥈 Run Silver",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "medallion_etl.cli",
+            "args": ["silver"],
+            "python": "${workspaceFolder}/.venv/Scripts/python.exe",
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "🥇 Run Gold",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "medallion_etl.cli",
+            "args": ["gold"],
+            "python": "${workspaceFolder}/.venv/Scripts/python.exe",
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "🚀 Run All",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "medallion_etl.cli",
+            "args": ["all"],
+            "python": "${workspaceFolder}/.venv/Scripts/python.exe",
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "👁️ Execute Viewer",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/scripts/viewer_server.py",
+            "python": "${workspaceFolder}/.venv/Scripts/python.exe",
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal"
+        }
+    ],
+    "compounds": [
+        {
+            "name": "🚀👁️ Run All & Execute Viewer",
+            "configurations": ["🚀 Run All", "👁️ Execute Viewer"],
+            "stopAll": true
+        }
+    ]
+}
