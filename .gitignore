@@ -33,7 +33,8 @@ htmlcov/
 .ruff_cache/
 
 # IDEs
-.vscode/
+.vscode/*
+!.vscode/launch.json
 .idea/
 *.swp
 *.swo
