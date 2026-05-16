@@ -233,6 +233,11 @@ class PipelineLogger:
         # Contador monotónico de pipes dentro del step actual; se reinicia
         # a 0 al entrar en cada step.
         self._pipe_counter: int = 0
+        # Schema snapshots capturadas durante la ejecución, indexadas por
+        # `label` (típicamente el nombre de la capa: "bronze", "silver", "gold").
+        # Se vuelcan al `index.json` en `_close` para que el viewer pueda
+        # detectar drift comparando con la ejecución anterior.
+        self._schemas: dict[str, dict[str, Any]] = {}
 
     # ---- API pública ---------------------------------------------------
 
@@ -354,6 +359,41 @@ class PipelineLogger:
             return wrapper  # type: ignore[return-value]
 
         return decorator
+
+    def snapshot_schema(self, label: str, df: Any) -> None:
+        """Capture the column set + dtypes of a DataFrame at this point in the run.
+
+        `label` is the identifier the viewer uses to compare snapshots across
+        runs (typically the layer name: "bronze", "silver", "gold"). The snapshot
+        is also written to the run's info JSONL as a `schema_snapshot` event
+        for auditability, and stashed on the logger so `_close` can flush all
+        snapshots into the index entry for the run.
+
+        No-op if there's no active execution or `df` has no `.columns`.
+        """
+        if self._fh is None or not hasattr(df, "columns"):
+            return
+        cols = [str(c) for c in df.columns]
+        dtypes = {}
+        try:
+            for c in df.columns:
+                dtypes[str(c)] = str(df[c].dtype)
+        except Exception:
+            dtypes = {}
+        snap = {
+            "columns": cols,
+            "dtypes": dtypes,
+            "row_count": int(len(df)) if hasattr(df, "__len__") else None,
+        }
+        self._schemas[label] = snap
+        self._emit(
+            event="schema_snapshot",
+            level="info",
+            label=label,
+            columns=cols,
+            dtypes=dtypes,
+            row_count=snap["row_count"],
+        )
 
     def pipe(self, name: str | None = None, description: str = "") -> Callable[[F], F]:
         """Decorator: instrumenta una función usada en `.pipe()` como sub-paso del step activo.
@@ -487,6 +527,7 @@ class PipelineLogger:
             self._t_started_iso = _now_iso()
             self._layers_seen.clear()
             self._layers_completed.clear()
+            self._schemas.clear()
             self._emit(event="execution_started", level="info")
             # Index entry points at the info file (the viewer fetches this path
             # to replay events). Path is relative to _logs/ for portability.
@@ -531,20 +572,20 @@ class PipelineLogger:
                 layers_seen=len(self._layers_seen),
             )
             rel_info = f"run-{self._execution_id:06d}/run-{self._execution_id:06d}-info.jsonl"
-            _index_upsert(
-                _logs_root(),
-                {
-                    "id": self._execution_id,
-                    "pipeline": self._pipeline,
-                    "file": rel_info,
-                    "started_at": self._t_started_iso,
-                    "finished_at": finished_at,
-                    "status": status,
-                    "duration_ms": duration_ms,
-                    "layers_completed": len(self._layers_completed),
-                    "layers_seen": len(self._layers_seen),
-                },
-            )
+            entry: dict[str, Any] = {
+                "id": self._execution_id,
+                "pipeline": self._pipeline,
+                "file": rel_info,
+                "started_at": self._t_started_iso,
+                "finished_at": finished_at,
+                "status": status,
+                "duration_ms": duration_ms,
+                "layers_completed": len(self._layers_completed),
+                "layers_seen": len(self._layers_seen),
+            }
+            if self._schemas:
+                entry["schemas"] = dict(self._schemas)
+            _index_upsert(_logs_root(), entry)
             self._fh.close()
             self._fh = None
             if self._usage_fh is not None:

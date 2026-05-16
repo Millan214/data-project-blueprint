@@ -90,6 +90,7 @@ def build_orders_daily_pipeline(run_id: str | None = None) -> dict[str, str]:
 
     # Validación
     clean, quarantine = gate_gold(candidate)
+    logger.snapshot_schema("gold", clean)
 
     # Escritura
     return publish_to_gold(clean, quarantine, table_name, run_id)

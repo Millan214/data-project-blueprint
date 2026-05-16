@@ -428,6 +428,48 @@
     text-align: center;
   }
 
+  /* Schema-drift section in the run overview. */
+  .drift-section { margin-top: 22px; }
+  .drift-heading {
+    display: flex; align-items: baseline; gap: 10px;
+    font-size: 11px; font-weight: 600; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--muted);
+    margin-bottom: 10px;
+  }
+  .drift-heading .vs { color: var(--muted); font-weight: 400; letter-spacing: 0.04em; text-transform: none; }
+  .drift-card {
+    background: var(--panel); border: 1px solid var(--border);
+    border-left: 3px solid var(--orange);
+    border-radius: 6px;
+    padding: 10px 14px; margin-bottom: 8px;
+  }
+  .drift-card.new { border-left-color: var(--green); }
+  .drift-card.error { border-left-color: var(--red); }
+  .drift-card-head {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 12px; font-weight: 500; margin-bottom: 6px;
+  }
+  .drift-card-head .label { font-weight: 600; }
+  .drift-card-head .tag {
+    font-size: 9px; padding: 1px 6px; border-radius: 3px; letter-spacing: 0.06em;
+    text-transform: uppercase; font-weight: 700;
+    background: rgba(210,153,34,0.15); color: var(--orange);
+  }
+  .drift-card-head .tag.new { background: rgba(63,185,80,0.15); color: var(--green); }
+  .drift-changes {
+    font-size: 11px; color: var(--text); font-family: var(--mono);
+    line-height: 1.7;
+  }
+  .drift-changes .add { color: var(--green); }
+  .drift-changes .rem { color: var(--red); }
+  .drift-changes .chg { color: var(--orange); }
+  .drift-changes .key { color: var(--muted); }
+  .drift-badge {
+    font-size: 8px; letter-spacing: 0.08em; text-transform: uppercase;
+    padding: 1px 5px; border-radius: 3px; font-weight: 700;
+    background: rgba(210,153,34,0.15); color: var(--orange);
+  }
+
   /* Sample / quarantine viewer — inline parquet table loaded via /parquet. */
   .sample-section { margin-top: 22px; }
   .sample-heading {
@@ -1412,15 +1454,19 @@ function renderRunOverview(run) {
   const totalPipes = layerArr.reduce(
     (n, l) => n + [...l.steps.values()].reduce((m, s) => m + (s.pipes?.size || 0), 0), 0,
   );
-  const layerSummary = layerArr.map(l =>
-    `<div class="flow-box ${l.status}" data-layer-order="${l.order}" style="cursor:pointer; min-width: 130px;">
+  const drift = computeSchemaDrift();
+  const driftedLabels = new Set(Object.entries(drift).filter(([, d]) => d.changed).map(([k]) => k));
+  const layerSummary = layerArr.map(l => {
+    const driftBadge = driftedLabels.has(l.name) ? `<span class="drift-badge">drift</span>` : "";
+    return `<div class="flow-box ${l.status}" data-layer-order="${l.order}" style="cursor:pointer; min-width: 130px;">
        <div class="flow-box-head">
          <span class="dot ${l.status}"></span>
          <span>${escapeHtml(capitalize(l.name))}</span>
+         ${driftBadge}
        </div>
        <div class="flow-box-meta">${l.steps.size} step${l.steps.size === 1 ? "" : "s"}</div>
-     </div>`,
-  ).join("");
+     </div>`;
+  }).join("");
   const status = run.meta.status;
 
   return `
@@ -1432,8 +1478,92 @@ function renderRunOverview(run) {
     </div>
     <h3 style="font-size: 11px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin-bottom: 10px;">Layers</h3>
     <div class="flow">${layerSummary}</div>
+    ${renderSchemaDrift(drift)}
     ${renderWaterfall(run)}
   `;
+}
+
+// Compare the currently-selected run's schema snapshots against the most
+// recent earlier run that has a snapshot for the same label. Returns a map
+// keyed by label with `{ changed, isNew, added, removed, dtypeChanged,
+// rowsCurrent, rowsPrev, prevId }`.
+function computeSchemaDrift() {
+  const cur = state.executions.find(e => e.id === state.selectedExecId);
+  const result = {};
+  if (!cur || !cur.schemas) return result;
+  // Earlier runs in id order (most recent first).
+  const earlier = state.executions
+    .filter(e => e.id < cur.id && e.schemas)
+    .sort((a, b) => b.id - a.id);
+  for (const [label, snap] of Object.entries(cur.schemas)) {
+    const prev = earlier.find(e => e.schemas && e.schemas[label]);
+    if (!prev) {
+      result[label] = { changed: true, isNew: true };
+      continue;
+    }
+    const p = prev.schemas[label];
+    const curCols = new Set(snap.columns || []);
+    const prevCols = new Set(p.columns || []);
+    const added = [...curCols].filter(c => !prevCols.has(c));
+    const removed = [...prevCols].filter(c => !curCols.has(c));
+    const dtypeChanged = [];
+    for (const c of curCols) {
+      if (prevCols.has(c) && snap.dtypes?.[c] !== p.dtypes?.[c]) {
+        dtypeChanged.push({ column: c, from: p.dtypes?.[c], to: snap.dtypes?.[c] });
+      }
+    }
+    const changed = added.length || removed.length || dtypeChanged.length;
+    result[label] = {
+      changed: !!changed,
+      isNew: false,
+      added, removed, dtypeChanged,
+      rowsCurrent: snap.row_count, rowsPrev: p.row_count,
+      prevId: prev.id,
+    };
+  }
+  return result;
+}
+
+function renderSchemaDrift(drift) {
+  const labels = Object.keys(drift).filter(l => drift[l].changed);
+  if (!labels.length) return "";
+  const cards = labels.map(label => {
+    const d = drift[label];
+    if (d.isNew) {
+      return `<div class="drift-card new">
+        <div class="drift-card-head">
+          <span class="label">${escapeHtml(capitalize(label))}</span>
+          <span class="tag new">new snapshot</span>
+        </div>
+        <div class="drift-changes">No previous snapshot for this label — first run to record it.</div>
+      </div>`;
+    }
+    const parts = [];
+    if (d.added.length) {
+      parts.push(`<div><span class="key">+ added:</span> <span class="add">${d.added.map(escapeHtml).join(", ")}</span></div>`);
+    }
+    if (d.removed.length) {
+      parts.push(`<div><span class="key">− removed:</span> <span class="rem">${d.removed.map(escapeHtml).join(", ")}</span></div>`);
+    }
+    if (d.dtypeChanged.length) {
+      parts.push(`<div><span class="key">~ dtypes:</span> <span class="chg">${
+        d.dtypeChanged.map(x => `${escapeHtml(x.column)} (${escapeHtml(x.from)} → ${escapeHtml(x.to)})`).join("; ")
+      }</span></div>`);
+    }
+    return `<div class="drift-card">
+      <div class="drift-card-head">
+        <span class="label">${escapeHtml(capitalize(label))}</span>
+        <span class="tag">schema drift</span>
+        <span class="key" style="margin-left: auto; font-size: 10px;">vs run #${d.prevId}</span>
+      </div>
+      <div class="drift-changes">${parts.join("")}</div>
+    </div>`;
+  }).join("");
+  return `
+    <div class="drift-section">
+      <div class="drift-heading">Schema drift <span class="vs">— vs previous runs</span></div>
+      ${cards}
+    </div>`;
 }
 
 function renderWaterfall(run) {
@@ -1792,6 +1922,11 @@ async function pollIndex() {
       state.animatedLayers = new Set();
       state.run = null;
       pollRun();
+    } else if (state.run) {
+      // Index refresh — re-render the overview so drift is recomputed against
+      // the latest set of executions (a new sibling run may have appeared
+      // since the last poll, changing what "previous run" means).
+      renderDetail(state.run);
     }
     renderExecPicker();
   } catch (_) {
