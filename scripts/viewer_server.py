@@ -4,6 +4,9 @@ Serves project files (so `viewer.html` can fetch `data/_logs/*`), plus:
 - `/open?path=<rel>` — opens the given relative path in the OS file explorer.
 - `/run?layer=<bronze|silver|gold|all>` — spawns the corresponding pipeline
   command in a new terminal window so the user can watch its output live.
+- `/parquet?path=<rel>&limit=N` — reads a parquet file/directory inside the
+  project and returns up to N rows as JSON. Used by the viewer to render
+  inline sample tables for quarantine / silver / gold outputs.
 
 Run:
     python scripts/viewer_server.py [port]
@@ -12,6 +15,7 @@ Run:
 from __future__ import annotations
 
 import http.server
+import json
 import os
 import socketserver
 import subprocess
@@ -62,6 +66,53 @@ def _spawn_pipeline(layer: str) -> None:
         subprocess.Popen(cmd_args, cwd=str(PROJECT_ROOT))
 
 
+def _resolve_safe(rel: str) -> Path | None:
+    """Resolve `rel` against PROJECT_ROOT and ensure it stays inside.
+
+    Returns None if the path escapes the project root. Tolerates both
+    forward- and back-slashed inputs (paths captured on Windows often
+    arrive with `\\` from the JSONL event field).
+    """
+    if not rel:
+        return None
+    target = (PROJECT_ROOT / rel.replace("\\", "/")).resolve()
+    try:
+        target.relative_to(PROJECT_ROOT)
+    except ValueError:
+        return None
+    return target
+
+
+def _read_parquet_sample(target: Path, limit: int) -> dict:
+    """Read a parquet file or partitioned directory, return up to `limit` rows
+    plus the total row count and column names. Values are JSON-coerced."""
+    import pandas as pd
+    df = pd.read_parquet(target)
+    total = len(df)
+    sample = df.head(limit)
+    rows: list[dict] = []
+    for _, row in sample.iterrows():
+        out: dict = {}
+        for col, val in row.items():
+            if pd.isna(val):
+                out[col] = None
+            elif hasattr(val, "isoformat"):
+                out[col] = val.isoformat()
+            elif isinstance(val, (int, float, bool, str)):
+                out[col] = val
+            elif isinstance(val, (list, dict)):
+                out[col] = val
+            else:
+                out[col] = str(val)
+        rows.append(out)
+    return {
+        "columns": [str(c) for c in df.columns],
+        "dtypes": {str(c): str(df[c].dtype) for c in df.columns},
+        "total": int(total),
+        "rows": rows,
+    }
+
+
 class ViewerHandler(http.server.SimpleHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802
         if self.path.startswith("/open"):
@@ -70,7 +121,41 @@ class ViewerHandler(http.server.SimpleHTTPRequestHandler):
         if self.path.startswith("/run"):
             self._handle_run()
             return
+        if self.path.startswith("/parquet"):
+            self._handle_parquet()
+            return
         super().do_GET()
+
+    def _handle_parquet(self) -> None:
+        parsed = urllib.parse.urlparse(self.path)
+        params = urllib.parse.parse_qs(parsed.query)
+        rel = params.get("path", [""])[0]
+        try:
+            limit = max(1, min(int(params.get("limit", ["20"])[0]), 500))
+        except ValueError:
+            limit = 20
+        target = _resolve_safe(rel)
+        if target is None:
+            self.send_error(400, "missing or invalid path")
+            return
+        if not target.exists():
+            self.send_error(404, f"path not found: {rel}")
+            return
+        try:
+            data = _read_parquet_sample(target, limit)
+        except ImportError:
+            self.send_error(500, "pandas/pyarrow not installed in server env")
+            return
+        except Exception as exc:
+            self.send_error(500, f"read failed: {exc}")
+            return
+        body = json.dumps(data, default=str).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-cache")
+        self.end_headers()
+        self.wfile.write(body)
 
     def _handle_run(self) -> None:
         parsed = urllib.parse.urlparse(self.path)

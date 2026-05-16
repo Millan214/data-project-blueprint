@@ -428,6 +428,57 @@
     text-align: center;
   }
 
+  /* Sample / quarantine viewer — inline parquet table loaded via /parquet. */
+  .sample-section { margin-top: 22px; }
+  .sample-heading {
+    font-size: 11px; font-weight: 600; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--muted);
+    margin-bottom: 10px;
+  }
+  .sample-toolbar {
+    display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px;
+  }
+  .sample-btn {
+    background: var(--panel); border: 1px solid var(--border); color: var(--text);
+    padding: 5px 10px; font: inherit; font-size: 11px; border-radius: 5px;
+    cursor: pointer;
+    display: inline-flex; align-items: center; gap: 6px;
+    transition: background 0.1s, border-color 0.1s;
+  }
+  .sample-btn:hover { background: var(--panel-2); border-color: var(--muted); }
+  .sample-btn.quarantine { border-left: 3px solid var(--red); }
+  .sample-btn.active { background: var(--panel-2); border-color: var(--orange); }
+  .sample-btn .icon { color: var(--muted); }
+  .sample-status {
+    font-size: 10px; color: var(--muted); font-family: var(--mono);
+    text-transform: uppercase; letter-spacing: 0.08em;
+    margin-bottom: 6px;
+  }
+  .sample-table-wrap {
+    overflow: auto; max-height: 320px;
+    border: 1px solid var(--border); border-radius: 6px;
+    background: var(--panel);
+  }
+  table.sample-table {
+    width: 100%; border-collapse: collapse; font-size: 11px;
+  }
+  table.sample-table th, table.sample-table td {
+    padding: 6px 10px; text-align: left;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap; font-family: var(--mono);
+  }
+  table.sample-table thead th {
+    position: sticky; top: 0; background: var(--panel-2); color: var(--muted);
+    font-size: 9px; text-transform: uppercase; letter-spacing: 0.08em;
+    font-weight: 600; z-index: 1;
+  }
+  table.sample-table tbody tr:hover { background: var(--panel-2); }
+  table.sample-table td .nullv { color: var(--muted); font-style: italic; }
+  table.sample-table td code {
+    font-size: 10px; padding: 1px 4px; background: var(--bg);
+    border-radius: 3px; color: var(--text);
+  }
+
   /* Waterfall — Gantt-style timeline of step+pipe intervals for a run. */
   .waterfall {
     margin-top: 14px;
@@ -1286,7 +1337,73 @@ function renderDetail(run) {
       `<div><span style="color:var(--muted)">${escapeHtml(prettyKey(k))}:</span> ${formatValHtml(v)}</div>`).join("");
     body += `<div style="font-family: var(--mono); font-size: 12px; line-height: 1.8; color: var(--text); margin-top: 8px;">${lines}</div>`;
   }
+  // Sample-rows section: any path-like extra (quarantine partition, silver/
+  // gold output, etc.) gets a button to load + render an inline parquet table.
+  const samplePaths = Object.entries(step.extra)
+    .filter(([k, v]) => typeof v === "string" && pathToUrl(v));
+  if (samplePaths.length) {
+    const buttons = samplePaths.map(([k, v]) => {
+      const isQ = k.toLowerCase().includes("quarantine");
+      return `<button class="sample-btn ${isQ ? "quarantine" : ""}" data-sample-path="${escapeHtml(v)}" data-sample-key="${escapeHtml(k)}">
+        <span class="icon">▦</span><span>${isQ ? "Sample quarantine" : "Sample " + escapeHtml(prettyKey(k))}</span>
+      </button>`;
+    }).join("");
+    body += `
+      <div class="sample-section">
+        <div class="sample-heading">Sample rows</div>
+        <div class="sample-toolbar">${buttons}</div>
+        <div class="sample-status" id="sample-status"></div>
+        <div id="sample-target"></div>
+      </div>`;
+  }
   el.innerHTML = body;
+}
+
+// ---------- inline parquet sample renderer ----------
+async function loadParquetSample(path, key, clickedBtn) {
+  const targetEl = document.getElementById("sample-target");
+  const statusEl = document.getElementById("sample-status");
+  if (!targetEl) return;
+  document.querySelectorAll(".sample-btn").forEach(b => b.classList.remove("active"));
+  if (clickedBtn) clickedBtn.classList.add("active");
+  statusEl.textContent = `Loading ${key}…`;
+  targetEl.innerHTML = "";
+  try {
+    const res = await fetch(`/parquet?path=${encodeURIComponent(path)}&limit=50`, { cache: "no-store" });
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    const data = await res.json();
+    statusEl.textContent = `${data.total.toLocaleString()} rows total · showing ${data.rows.length} · ${data.columns.length} columns`;
+    targetEl.innerHTML = renderParquetTable(data);
+  } catch (err) {
+    statusEl.textContent = "";
+    targetEl.innerHTML = `<div class="empty" style="padding: 20px 0;">Failed to load: ${escapeHtml(err.message)}</div>`;
+  }
+}
+
+function renderParquetTable(data) {
+  const cols = data.columns || [];
+  const rows = data.rows || [];
+  if (!cols.length) return `<div class="empty" style="padding: 20px 0;">No columns.</div>`;
+  const header = cols.map(c => `<th title="${escapeHtml(data.dtypes?.[c] || "")}">${escapeHtml(c)}</th>`).join("");
+  const body = rows.map(r =>
+    `<tr>${cols.map(c => `<td>${formatSampleCell(r[c])}</td>`).join("")}</tr>`,
+  ).join("");
+  return `<div class="sample-table-wrap">
+    <table class="sample-table">
+      <thead><tr>${header}</tr></thead>
+      <tbody>${body}</tbody>
+    </table>
+  </div>`;
+}
+
+function formatSampleCell(v) {
+  if (v == null) return '<span class="nullv">null</span>';
+  if (typeof v === "object") {
+    const s = JSON.stringify(v);
+    return `<code>${escapeHtml(s.length > 140 ? s.slice(0, 137) + "…" : s)}</code>`;
+  }
+  const s = String(v);
+  return escapeHtml(s.length > 140 ? s.slice(0, 137) + "…" : s);
 }
 
 function renderRunOverview(run) {
@@ -1587,6 +1704,11 @@ document.getElementById("detail").addEventListener("click", (e) => {
     fetch(`/open?path=${encodeURIComponent(p)}`, { method: "GET" })
       .then(r => { if (!r.ok) console.warn("open failed:", r.status, r.statusText); })
       .catch(err => console.warn("open failed:", err));
+    return;
+  }
+  const sbtn = e.target.closest(".sample-btn[data-sample-path]");
+  if (sbtn) {
+    loadParquetSample(sbtn.dataset.samplePath, sbtn.dataset.sampleKey, sbtn);
     return;
   }
   // Waterfall row drill-down — takes precedence over generic flow-box clicks
