@@ -41,11 +41,11 @@ def _spawn_pipeline(layer: str) -> None:
     """
     cmd_args = ["uv", "run", "medallion-etl", layer]
     if sys.platform == "win32":
-        # `start` with a window title (the empty "" handles paths with spaces)
-        # and `cmd /k` so the window stays open after the command finishes
-        # — that way the user can see the output.
+        # `start` with a window title; `cmd /c` runs the command and CLOSES the
+        # window when it finishes. We append a short timeout so the user can
+        # glance at the final lines before the window disappears.
         subprocess.Popen(
-            f'start "Pipeline · {layer}" cmd /k "uv run medallion-etl {layer}"',
+            f'start "Pipeline · {layer}" cmd /c "uv run medallion-etl {layer} & timeout /t 3 /nobreak >nul"',
             shell=True,
             cwd=str(PROJECT_ROOT),
         )

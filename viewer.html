@@ -179,7 +179,9 @@
   }
   .dot.success { background: var(--green); }
   .dot.error { background: var(--red); }
-  .dot.running { background: var(--red); animation: pulse 1.2s ease-in-out infinite; }
+  /* Running dot stays SOLID (no opacity flash); a ripple ring expands and fades
+     around it via box-shadow. Same effect as the layer-row timeline dot. */
+  .dot.running { background: var(--orange); border-color: var(--orange); animation: dot-ring 1.4s ease-out infinite; }
   .dot.pending { background: transparent; border-color: var(--gray); }
   .dot.skipped { background: var(--gray); }
 
@@ -188,21 +190,74 @@
     50% { opacity: 0.35; }
   }
 
-  /* Outer execution timeline left of layer cards */
+  /* Outer execution timeline left of layer cards.
+     We wrap each .layer in a .layer-row whose ::before is the dot and ::after
+     is the colored progress segment running down to the next dot. The card
+     itself keeps `overflow: hidden` (to clip its rounded corners) — the
+     wrapper, which does NOT clip, hosts the indicators so they actually show. */
   .timeline { position: relative; padding-left: 20px; }
+  /* Faint background track — visible only where no progress segment covers it.
+     Integer-pixel alignment: 10px dot at left:-20 spans columns -20..-11
+     (center BETWEEN -16 and -15); 2px bar at left:-16 spans -16..-15 (center
+     between -16 and -15) → matches dot center exactly.
+     Track at .timeline-left + 4 (width 2 → between columns 4 and 5);
+     row left = .timeline + 20, so dot center is at .timeline +4..+5 → matches. */
   .timeline::before {
-    content: ""; position: absolute; left: 7px; top: 18px; bottom: 18px;
-    width: 1.5px; background: var(--border);
+    content: ""; position: absolute; left: 4px; top: 14px; bottom: 14px;
+    width: 2px; background: var(--border); opacity: 0.4;
   }
-  .timeline .layer { position: relative; }
-  .timeline .layer::before {
+  .layer-row { position: relative; margin-bottom: 10px; }
+  .layer-row > .layer { margin-bottom: 0; }
+  /* Smooth entry when a new layer becomes visible mid-run. Applied only the
+     first time we render a given layer (see renderRail / state.animatedLayers);
+     subsequent re-renders skip the class so existing rows don't re-animate. */
+  .layer-row.layer-row-new {
+    animation: layer-appear 0.45s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  }
+  @keyframes layer-appear {
+    0%   { opacity: 0; transform: translateY(-10px); }
+    100% { opacity: 1; transform: translateY(0); }
+  }
+  .layer-row::before {
     content: ""; position: absolute;
-    left: -19px; top: 14px; width: 9px; height: 9px; border-radius: 50%;
+    left: -20px; top: 13px; width: 10px; height: 10px; border-radius: 50%;
     background: transparent; border: 1.5px solid var(--gray);
+    z-index: 2;
+    transition: background 0.2s, border-color 0.2s;
   }
-  .timeline .layer.success::before { background: var(--green); border-color: var(--green); }
-  .timeline .layer.error::before { background: var(--red); border-color: var(--red); }
-  .timeline .layer.running::before { background: var(--red); border-color: var(--red); animation: pulse 1.2s ease-in-out infinite; }
+  .layer-row.success::before { background: var(--green); border-color: var(--green); }
+  .layer-row.error::before   { background: var(--red);   border-color: var(--red); }
+  /* Running: dot is SOLID (no fading), surrounded by a ring that grows and
+     fades — a "ripple" pulse driven by an expanding box-shadow. */
+  .layer-row.running::before {
+    background: var(--orange);
+    border-color: var(--orange);
+    animation: dot-ring 1.4s ease-out infinite;
+  }
+  @keyframes dot-ring {
+    0%   { box-shadow: 0 0 0 0px rgba(210,153,34, 0.65); }
+    70%  { box-shadow: 0 0 0 8px rgba(210,153,34, 0); }
+    100% { box-shadow: 0 0 0 0px rgba(210,153,34, 0); }
+  }
+  /* Connector segment from this layer's dot to the next layer's dot, colored
+     by THIS layer's status. Vertically: starts at top:13 (inside the dot, so
+     no gap at the top) and ends at bottom:-26 (overlaps into next dot for a
+     continuous look across rows). */
+  .layer-row::after {
+    content: ""; position: absolute;
+    left: -16px; top: 13px; bottom: -26px;
+    width: 2px; background: var(--gray); opacity: 0.4;
+    z-index: 1;
+    transition: background 0.2s, opacity 0.2s;
+  }
+  .layer-row:last-child::after { display: none; }
+  .layer-row.success::after { background: var(--green); opacity: 1; }
+  .layer-row.error::after   { background: var(--red);   opacity: 1; }
+  .layer-row.running::after {
+    background: linear-gradient(to bottom, var(--orange) 0%, var(--orange) 60%, var(--gray) 100%);
+    opacity: 1;
+    animation: pulse 1.2s ease-in-out infinite;
+  }
 
   section.detail {
     grid-area: detail;
@@ -486,6 +541,7 @@ const state = {
   selectedLayerOrder: null,
   collapsedLayers: new Set(),
   collapsedSteps: new Set(),
+  animatedLayers: new Set(),
   run: null,          // { meta, layers: Map<order, layerObj>, byStepId: Map }
 };
 
@@ -671,6 +727,12 @@ function renderRail(run) {
   if (!run) return;
   const layerArr = [...run.layers.values()].sort((a,b)=>a.order-b.order);
   for (const layer of layerArr) {
+    // Wrapper hosts the timeline dot + progress segment (un-clipped), so they
+    // stay visible even though the card itself uses overflow:hidden.
+    const row = document.createElement("div");
+    const isFirstAppearance = !state.animatedLayers.has(layer.order);
+    if (isFirstAppearance) state.animatedLayers.add(layer.order);
+    row.className = `layer-row ${layer.status}${isFirstAppearance ? " layer-row-new" : ""}`;
     const card = document.createElement("div");
     const isCollapsed = state.collapsedLayers.has(layer.order);
     const isSelected = state.selectedLayerOrder === layer.order && state.selectedStepId == null;
@@ -754,7 +816,8 @@ function renderRail(run) {
         stepsDiv.appendChild(pipesDiv);
       }
     }
-    root.appendChild(card);
+    row.appendChild(card);
+    root.appendChild(row);
   }
 }
 
@@ -1075,6 +1138,7 @@ document.getElementById("exec-picker").addEventListener("change", (e) => {
     state.selectedExecId = id;
     state.selectedStepId = null;
     state.selectedPipeId = null;
+    state.animatedLayers = new Set();
     state.run = null;
     pollRun();
   }
@@ -1087,6 +1151,7 @@ async function pollIndex() {
     state.executions = data.executions || [];
     if (state.selectedExecId == null && state.executions.length) {
       state.selectedExecId = state.executions[state.executions.length - 1].id;
+      state.animatedLayers = new Set();
       pollRun();
     }
     renderExecPicker();
