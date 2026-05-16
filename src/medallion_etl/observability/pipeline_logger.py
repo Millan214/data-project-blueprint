@@ -38,6 +38,7 @@ from __future__ import annotations
 import inspect
 import json
 import re
+import shutil
 import threading
 import time
 import traceback
@@ -141,6 +142,86 @@ def _next_execution_id(root: Path) -> int:
         if p.is_dir() and (m := _RUN_DIR_RE.match(p.name))
     ]
     return max(used, default=0) + 1
+
+
+def _project_root() -> Path:
+    """Project root inferred from `settings.storage_root` (one above `data/`)."""
+    storage = settings.storage_root.removeprefix("file://")
+    storage_path = Path(storage)
+    if not storage_path.is_absolute():
+        storage_path = (Path.cwd() / storage_path).resolve()
+    else:
+        storage_path = storage_path.resolve()
+    return storage_path.parent if storage_path.name == "data" else storage_path
+
+
+def _scan_run_partitions(info_file: Path) -> list[Path]:
+    """Read a run's info JSONL and pull every project-relative directory that
+    was emitted as an event field (output_path / silver / gold / quarantine).
+    Returns absolute, resolved paths that exist on disk and stay inside the
+    project root."""
+    if not info_file.exists():
+        return []
+    project_root = _project_root()
+    keys = {"output_path", "silver", "gold", "quarantine", "bronze"}
+    paths: set[Path] = set()
+    try:
+        with info_file.open("r", encoding="utf-8") as fh:
+            for line in fh:
+                try:
+                    ev = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                for k in keys:
+                    v = ev.get(k)
+                    if isinstance(v, str) and "run_id=" in v.replace("\\", "/"):
+                        candidate = (project_root / v.replace("\\", "/")).resolve()
+                        if str(candidate).startswith(str(project_root)) and candidate.exists():
+                            paths.add(candidate)
+    except OSError:
+        return []
+    return list(paths)
+
+
+def _cleanup_old_runs(root: Path, keep: int) -> None:
+    """Prune everything older than the most recent `keep` runs.
+
+    Removes the `_logs/run-NNNNNN/` directory, the data partitions referenced
+    by its events, and the matching `index.json` entries. Safe to call before
+    or after creating a new run dir — it only considers run directories that
+    already exist on disk.
+    """
+    if keep <= 0 or not root.exists():
+        return
+    run_dirs = sorted(
+        (
+            (int(m.group(1)), p)
+            for p in root.iterdir()
+            if p.is_dir() and (m := _RUN_DIR_RE.match(p.name))
+        ),
+        key=lambda x: x[0],
+    )
+    if len(run_dirs) <= keep:
+        return
+    to_delete = run_dirs[:-keep]
+    deleted_ids: set[int] = set()
+    for exec_id, run_dir in to_delete:
+        info_file = run_dir / f"{run_dir.name}-info.jsonl"
+        for partition in _scan_run_partitions(info_file):
+            shutil.rmtree(partition, ignore_errors=True)
+        shutil.rmtree(run_dir, ignore_errors=True)
+        deleted_ids.add(exec_id)
+    idx = _index_path(root)
+    if idx.exists():
+        try:
+            data = json.loads(idx.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return
+        execs = data.get("executions", [])
+        kept = [e for e in execs if e.get("id") not in deleted_ids]
+        if len(kept) != len(execs):
+            data["executions"] = kept
+            idx.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
 
 def _now_iso() -> str:
@@ -552,6 +633,13 @@ class PipelineLogger:
                 disk_path=root,
             )
             self._sampler.start()
+            # Retention: prune runs older than the keep window. Best-effort;
+            # any IO error during cleanup is swallowed so it cannot break the
+            # current run.
+            try:
+                _cleanup_old_runs(root, getattr(settings, "keep_runs", 0))
+            except Exception:
+                pass
 
     def _close(self, *, status: str) -> None:
         with self._lock:
