@@ -134,6 +134,39 @@
   .step.selected { background: var(--panel-2); border-left-color: var(--red); }
   .step .step-name { flex: 1; }
   .step.pending .step-name { color: var(--muted); }
+  .step .transform-badge {
+    font-size: 8px; letter-spacing: 0.08em; text-transform: uppercase;
+    padding: 1px 5px; border-radius: 3px;
+    background: rgba(110,158,255,0.12); color: #6e9eff; font-weight: 700;
+  }
+  .step .step-caret {
+    font-size: 9px; color: var(--muted);
+    display: inline-block; transition: transform 0.15s ease;
+    width: 12px; text-align: center; cursor: pointer;
+    margin-left: -6px;
+  }
+  .step.collapsed .step-caret { transform: rotate(-90deg); }
+  .step.collapsed + .pipes { display: none; }
+
+  .pipes {
+    border-left: 1.5px solid var(--border);
+    margin: 2px 0 4px 38px;
+    padding: 2px 0 2px 0;
+  }
+  .pipe {
+    display: flex; align-items: center; gap: 8px;
+    padding: 4px 14px 4px 10px;
+    cursor: pointer; font-size: 11px;
+    color: var(--text);
+    border-left: 2px solid transparent;
+    margin-left: -1.5px;
+  }
+  .pipe:hover { background: var(--panel-2); }
+  .pipe.selected { background: var(--panel-2); border-left-color: var(--red); }
+  .pipe .pipe-name { flex: 1; }
+  .pipe.pending .pipe-name { color: var(--muted); }
+  .pipe .pipe-dur { color: var(--muted); font-family: var(--mono); font-size: 10px; }
+  .pipe .dot { width: 7px; height: 7px; border-width: 1.2px; }
 
   .dot {
     width: 9px; height: 9px; border-radius: 50%;
@@ -248,6 +281,49 @@
     font-size: 11px; color: var(--muted);
     margin-top: 6px; font-family: var(--mono);
   }
+  .flow-box.has-pipes { min-width: 220px; }
+  .flow-box .transform-badge {
+    font-size: 8px; letter-spacing: 0.08em; text-transform: uppercase;
+    padding: 1px 5px; border-radius: 3px;
+    background: rgba(110,158,255,0.12); color: #6e9eff; font-weight: 700;
+    margin-left: auto;
+  }
+  .flow-box-head { display: flex; align-items: center; gap: 8px; }
+
+  .flow-pipes {
+    display: flex; flex-wrap: wrap; align-items: stretch;
+    gap: 6px; margin-top: 10px; padding-top: 10px;
+    border-top: 1px dashed var(--border);
+  }
+  .flow-pipe {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-left-width: 2px;
+    border-radius: 4px;
+    padding: 6px 10px;
+    min-width: 120px;
+    cursor: pointer;
+    transition: border-color 0.1s, background 0.1s;
+  }
+  .flow-pipe:hover { background: rgba(255,255,255,0.04); }
+  .flow-pipe.success  { border-left-color: var(--green); }
+  .flow-pipe.error    { border-left-color: var(--red); }
+  .flow-pipe.running  { border-left-color: var(--orange); }
+  .flow-pipe.pending  { border-left-color: var(--gray); }
+  .flow-pipe-head {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 11px; font-weight: 500;
+  }
+  .flow-pipe-head .dot { width: 7px; height: 7px; border-width: 1.2px; }
+  .flow-pipe-meta {
+    font-size: 10px; color: var(--muted);
+    margin-top: 3px; font-family: var(--mono);
+  }
+  .flow-pipe-arrow {
+    display: flex; align-items: center;
+    color: var(--muted); font-size: 13px;
+    user-select: none;
+  }
 
   section.detail a {
     color: #6e9eff;
@@ -308,8 +384,10 @@ const state = {
   executions: [],     // from index.json
   selectedExecId: null,
   selectedStepId: null,
+  selectedPipeId: null,
   selectedLayerOrder: null,
   collapsedLayers: new Set(),
+  collapsedSteps: new Set(),
   run: null,          // { meta, layers: Map<order, layerObj>, byStepId: Map }
 };
 
@@ -362,6 +440,7 @@ function buildRunModel(events) {
           id: sid, name: ev.step_name, layer: ev.layer, layerOrder: lo, order: ev.step_order,
           description: null,
           status: "pending", durationMs: null, rowsIn: null, rowsOut: null, error: null, extra: {},
+          pipes: new Map(),
         };
         byStepId.set(sid, step);
         layer.steps.set(ev.step_order, step);
@@ -381,6 +460,48 @@ function buildRunModel(events) {
         for (const [k, v] of Object.entries(ev)) {
           if (!standard.has(k)) step.extra[k] = v;
         }
+      }
+    } else if (ev.event === "pipe_started" || ev.event === "pipe_finished") {
+      // Sub-step of an active step (e.g. functions chained with .pipe()).
+      const lo = ev.layer_order;
+      if (!layers.has(lo)) {
+        layers.set(lo, { order: lo, name: ev.layer, status: "pending", steps: new Map() });
+      }
+      const layer = layers.get(lo);
+      const sid = ev.step_id;
+      let parent = byStepId.get(sid);
+      if (!parent) {
+        // pipe arrived before its step_started — synthesize a placeholder.
+        parent = {
+          id: sid, name: sid, layer: ev.layer, layerOrder: lo, order: -1,
+          description: null, status: "pending",
+          durationMs: null, rowsIn: null, rowsOut: null, error: null, extra: {},
+          pipes: new Map(),
+        };
+        byStepId.set(sid, parent);
+        layer.steps.set(-1, parent);
+      }
+      if (!parent.pipes) parent.pipes = new Map();
+      const pid = ev.pipe_id;
+      let pipe = parent.pipes.get(pid);
+      if (!pipe) {
+        pipe = {
+          id: pid, name: ev.pipe_name || pid, order: ev.pipe_order ?? 0,
+          description: ev.description || null,
+          status: "pending", durationMs: null, rowsIn: null, rowsOut: null, error: null,
+        };
+        parent.pipes.set(pid, pipe);
+      }
+      if (ev.description != null) pipe.description = ev.description;
+      if (ev.event === "pipe_started") {
+        pipe.status = "running";
+        if (ev.rows_in != null) pipe.rowsIn = ev.rows_in;
+      } else {
+        pipe.status = ev.status || "success";
+        pipe.durationMs = ev.duration_ms ?? null;
+        if (ev.rows_in != null) pipe.rowsIn = ev.rows_in;
+        if (ev.rows_out != null) pipe.rowsOut = ev.rows_out;
+        if (ev.error) pipe.error = ev.error;
       }
     }
   }
@@ -483,17 +604,57 @@ function renderRail(run) {
     const steps = [...layer.steps.values()].sort((a,b)=>a.order-b.order);
     for (const s of steps) {
       const row = document.createElement("div");
-      row.className = `step ${s.status} ${state.selectedStepId === s.id ? "selected" : ""}`;
+      const isStepSelected = state.selectedStepId === s.id && state.selectedPipeId == null;
+      const hasPipes = s.pipes && s.pipes.size > 0;
+      const isStepCollapsed = state.collapsedSteps.has(s.id);
+      row.className = `step ${s.status} ${isStepSelected ? "selected" : ""} ${hasPipes && isStepCollapsed ? "collapsed" : ""}`;
       row.title = s.description || "";
-      row.innerHTML = `<span class="dot ${s.status}"></span><span class="step-name">${escapeHtml(s.name)}</span>`;
+      const caret = hasPipes ? `<span class="step-caret">▼</span>` : "";
+      const badge = hasPipes ? `<span class="transform-badge">transform</span>` : "";
+      row.innerHTML = `${caret}<span class="dot ${s.status}"></span><span class="step-name">${escapeHtml(s.name)}</span>${badge}`;
       row.addEventListener("click", (e) => {
         e.stopPropagation();
         state.selectedStepId = s.id;
+        state.selectedPipeId = null;
         state.selectedLayerOrder = null;
         renderRail(state.run);
         renderDetail(state.run);
       });
+      if (hasPipes) {
+        const caretEl = row.querySelector(".step-caret");
+        caretEl.addEventListener("click", (e) => {
+          e.stopPropagation();
+          if (state.collapsedSteps.has(s.id)) state.collapsedSteps.delete(s.id);
+          else state.collapsedSteps.add(s.id);
+          renderRail(state.run);
+        });
+      }
       stepsDiv.appendChild(row);
+
+      if (hasPipes) {
+        const pipesDiv = document.createElement("div");
+        pipesDiv.className = "pipes";
+        if (isStepCollapsed) pipesDiv.style.display = "none";
+        const pipes = [...s.pipes.values()].sort((a,b)=>a.order-b.order);
+        for (const p of pipes) {
+          const prow = document.createElement("div");
+          const isPipeSelected = state.selectedPipeId === p.id;
+          prow.className = `pipe ${p.status} ${isPipeSelected ? "selected" : ""}`;
+          prow.title = p.description || "";
+          const dur = p.durationMs != null ? fmtDuration(p.durationMs) : "";
+          prow.innerHTML = `<span class="dot ${p.status}"></span><span class="pipe-name">${escapeHtml(p.name)}</span><span class="pipe-dur">${dur}</span>`;
+          prow.addEventListener("click", (e) => {
+            e.stopPropagation();
+            state.selectedStepId = s.id;
+            state.selectedPipeId = p.id;
+            state.selectedLayerOrder = null;
+            renderRail(state.run);
+            renderDetail(state.run);
+          });
+          pipesDiv.appendChild(prow);
+        }
+        stepsDiv.appendChild(pipesDiv);
+      }
     }
     root.appendChild(card);
   }
@@ -526,6 +687,18 @@ function renderDetail(run) {
     state.selectedStepId = step?.id ?? null;
   }
   if (!step) { el.innerHTML = `<div class="empty">No steps yet.</div>`; return; }
+
+  // Pipe-level view: render details of a specific pipe sub-step.
+  if (state.selectedPipeId && step.pipes) {
+    const pipe = step.pipes.get(state.selectedPipeId);
+    if (pipe) { el.innerHTML = renderPipeDetail(step, pipe); return; }
+  }
+
+  // Transform-step view: when a step has pipes, show the pipe chain as a flow.
+  if (step.pipes && step.pipes.size > 0) {
+    el.innerHTML = renderTransformFlow(step);
+    return;
+  }
 
   const pillClass = step.status;
   const pillText = (step.status || "pending").toUpperCase();
@@ -589,6 +762,75 @@ function renderDetail(run) {
   el.innerHTML = body;
 }
 
+function renderTransformFlow(step) {
+  const pipes = [...step.pipes.values()].sort((a,b)=>a.order-b.order);
+  const totalMs = pipes.reduce((sum, p) => sum + (p.durationMs ?? 0), 0);
+  const status = step.status;
+
+  const boxes = pipes.map((p, i) => {
+    const meta = [
+      p.durationMs != null ? fmtDuration(p.durationMs) : null,
+      p.rowsIn != null ? `in ${p.rowsIn.toLocaleString()}` : null,
+      p.rowsOut != null ? `out ${p.rowsOut.toLocaleString()}` : null,
+    ].filter(Boolean).join(" · ");
+    const box = `
+      <div class="flow-box ${p.status}" data-pipe-id="${escapeHtml(p.id)}" data-step-id="${escapeHtml(step.id)}" title="${escapeHtml(p.description || "")}">
+        <div class="flow-box-head">
+          <span class="dot ${p.status}"></span>
+          <span>${escapeHtml(p.name)}</span>
+        </div>
+        ${meta ? `<div class="flow-box-meta">${meta}</div>` : ""}
+      </div>`;
+    const arrow = i < pipes.length - 1 ? `<div class="flow-arrow">→</div>` : "";
+    return box + arrow;
+  }).join("");
+
+  return `
+    <div class="detail-grid">
+      <div><div class="label">Layer</div><div class="value">${escapeHtml(capitalize(step.layer))}</div></div>
+      <div><div class="label">Step</div><div class="value">${escapeHtml(step.name)} <span class="pill ${status}">${(status||"pending").toUpperCase()}</span></div></div>
+      <div><div class="label">Pipes</div><div class="value">${pipes.length}</div></div>
+      <div><div class="label">Total pipe duration</div><div class="value">${fmtDuration(totalMs || null)}</div></div>
+      ${step.description ? `<div style="grid-column: 1 / -1;">
+        <div class="label">Description</div>
+        <div class="value" style="font-weight: 400; font-size: 13px; color: var(--text); line-height: 1.5;">${escapeHtml(step.description)}</div>
+      </div>` : ""}
+    </div>
+    <div class="flow">${boxes || `<div class="empty">No pipes recorded yet.</div>`}</div>`;
+}
+
+function renderPipeDetail(step, pipe) {
+  const pillClass = pipe.status;
+  const pillText = (pipe.status || "pending").toUpperCase();
+  let body = `
+    <div class="detail-grid">
+      <div><div class="label">Layer</div><div class="value">${escapeHtml(capitalize(step.layer))}</div></div>
+      <div><div class="label">Result</div><div class="value"><span class="pill ${pillClass}">${pillText}</span></div></div>
+      <div><div class="label">Parent step</div><div class="value">${escapeHtml(step.name)}</div></div>
+      <div><div class="label">Pipe</div><div class="value">${escapeHtml(pipe.name)}</div></div>
+      <div><div class="label">Duration</div><div class="value">${fmtDuration(pipe.durationMs)}</div></div>
+      <div><div class="label">Order</div><div class="value">${pipe.order ?? "—"}</div></div>`;
+  if (pipe.description) {
+    body += `
+      <div style="grid-column: 1 / -1;">
+        <div class="label">Description</div>
+        <div class="value" style="font-weight: 400; font-size: 13px; color: var(--text); line-height: 1.5;">${escapeHtml(pipe.description)}</div>
+      </div>`;
+  }
+  if (pipe.rowsIn != null || pipe.rowsOut != null) {
+    body += `
+      <div><div class="label">Rows in</div><div class="value">${pipe.rowsIn?.toLocaleString() ?? "—"}</div></div>
+      <div><div class="label">Rows out</div><div class="value">${pipe.rowsOut?.toLocaleString() ?? "—"}</div></div>`;
+  }
+  body += `</div>`;
+  if (pipe.error) {
+    body += `
+      <div class="err-title">⚠ ERROR TRACE</div>
+      <div class="err-box">${colorizeTraceback(pipe.error.traceback || "")}</div>`;
+  }
+  return body;
+}
+
 function renderLayerFlow(layer) {
   const steps = [...layer.steps.values()].sort((a,b)=>a.order-b.order);
   const totalMs = steps.reduce((sum, s) => sum + (s.durationMs ?? 0), 0);
@@ -600,13 +842,38 @@ function renderLayerFlow(layer) {
       s.rowsIn != null ? `in ${s.rowsIn.toLocaleString()}` : null,
       s.rowsOut != null ? `out ${s.rowsOut.toLocaleString()}` : null,
     ].filter(Boolean).join(" · ");
+    const hasPipes = s.pipes && s.pipes.size > 0;
+    let pipesHtml = "";
+    if (hasPipes) {
+      const pipes = [...s.pipes.values()].sort((a,b)=>a.order-b.order);
+      const pipeBoxes = pipes.map((p, j) => {
+        const pmeta = [
+          p.durationMs != null ? fmtDuration(p.durationMs) : null,
+          p.rowsIn != null ? `in ${p.rowsIn.toLocaleString()}` : null,
+          p.rowsOut != null ? `out ${p.rowsOut.toLocaleString()}` : null,
+        ].filter(Boolean).join(" · ");
+        const pbox = `
+          <div class="flow-pipe ${p.status}" data-pipe-id="${escapeHtml(p.id)}" data-step-id="${escapeHtml(s.id)}" title="${escapeHtml(p.description || "")}">
+            <div class="flow-pipe-head">
+              <span class="dot ${p.status}"></span>
+              <span>${escapeHtml(p.name)}</span>
+            </div>
+            ${pmeta ? `<div class="flow-pipe-meta">${pmeta}</div>` : ""}
+          </div>`;
+        const parrow = j < pipes.length - 1 ? `<div class="flow-pipe-arrow">→</div>` : "";
+        return pbox + parrow;
+      }).join("");
+      pipesHtml = `<div class="flow-pipes">${pipeBoxes}</div>`;
+    }
     const box = `
-      <div class="flow-box ${s.status}" data-step-id="${escapeHtml(s.id)}" title="${escapeHtml(s.description || "")}">
+      <div class="flow-box ${s.status} ${hasPipes ? "has-pipes" : ""}" data-step-id="${escapeHtml(s.id)}" title="${escapeHtml(s.description || "")}">
         <div class="flow-box-head">
           <span class="dot ${s.status}"></span>
           <span>${escapeHtml(s.name)}</span>
+          ${hasPipes ? `<span class="transform-badge">transform</span>` : ""}
         </div>
         ${meta ? `<div class="flow-box-meta">${meta}</div>` : ""}
+        ${pipesHtml}
       </div>`;
     const arrow = i < steps.length - 1 ? `<div class="flow-arrow">→</div>` : "";
     return box + arrow;
@@ -685,9 +952,19 @@ document.getElementById("detail").addEventListener("click", (e) => {
       .catch(err => console.warn("open failed:", err));
     return;
   }
+  const pbox = e.target.closest(".flow-box[data-pipe-id], .flow-pipe[data-pipe-id]");
+  if (pbox) {
+    state.selectedStepId = pbox.dataset.stepId;
+    state.selectedPipeId = pbox.dataset.pipeId;
+    state.selectedLayerOrder = null;
+    renderRail(state.run);
+    renderDetail(state.run);
+    return;
+  }
   const box = e.target.closest(".flow-box[data-step-id]");
   if (box) {
     state.selectedStepId = box.dataset.stepId;
+    state.selectedPipeId = null;
     state.selectedLayerOrder = null;
     renderRail(state.run);
     renderDetail(state.run);
@@ -699,6 +976,7 @@ document.getElementById("exec-picker").addEventListener("change", (e) => {
   if (!isNaN(id)) {
     state.selectedExecId = id;
     state.selectedStepId = null;
+    state.selectedPipeId = null;
     state.run = null;
     pollRun();
   }

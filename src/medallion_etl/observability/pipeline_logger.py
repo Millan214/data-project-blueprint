@@ -78,6 +78,18 @@ def build_loginfo(entries: dict[str, dict[str, Any]]) -> dict[str, StepInfo]:
     return {sid: {"step_id": sid, **spec} for sid, spec in entries.items()}  # type: ignore[misc]
 
 
+def _safe_len(obj: Any) -> int | None:
+    """Devuelve `len(obj)` si está definido; si no, None.
+
+    Permite inferir `rows_in`/`rows_out` para DataFrames, listas, tuplas, etc.,
+    sin romper para tipos sin `__len__` (escalares, None, etc.).
+    """
+    try:
+        return len(obj)
+    except (TypeError, AttributeError):
+        return None
+
+
 def _logs_root() -> Path:
     storage = settings.storage_root.removeprefix("file://")
     return Path(storage) / settings.logs_dir
@@ -133,6 +145,13 @@ class PipelineLogger:
         self._t_started: float | None = None
         self._layers_seen: set[int] = set()
         self._layers_completed: set[int] = set()
+        # Step actualmente en ejecución — lo lee `@pipe` para colgar sus
+        # eventos del step padre. Se guarda/restaura en el wrapper de `step`
+        # para soportar tests u otros casos de anidamiento.
+        self._current_step: dict[str, Any] | None = None
+        # Contador monotónico de pipes dentro del step actual; se reinicia
+        # a 0 al entrar en cada step.
+        self._pipe_counter: int = 0
 
     # ---- API pública ---------------------------------------------------
 
@@ -185,6 +204,20 @@ class PipelineLogger:
                     rows_in=rows_in,
                 )
 
+                # Publica el step actual para que @pipe pueda colgar sus eventos.
+                # Se guarda el contexto previo para restaurarlo al salir (soporta
+                # cualquier nivel de anidamiento aunque normalmente solo haya uno).
+                prev_step = self._current_step
+                prev_counter = self._pipe_counter
+                self._current_step = {
+                    "layer": info["layer"],
+                    "layer_order": info["layer_order"],
+                    "step_id": info["step_id"],
+                    "step_name": info["step_name"],
+                    "step_order": info["step_order"],
+                }
+                self._pipe_counter = 0
+
                 try:
                     result = func(*args, **kwargs)
                 except BaseException as exc:
@@ -210,6 +243,8 @@ class PipelineLogger:
                         },
                         **extra_in,
                     )
+                    self._current_step = prev_step
+                    self._pipe_counter = prev_counter
                     raise
 
                 rows_out = self._call_shaper(info.get("rows_out_fn"), positional=(result,))
@@ -230,6 +265,97 @@ class PipelineLogger:
                     rows_in=rows_in,
                     rows_out=rows_out,
                     **{**extra_in, **extra_out},
+                )
+                self._current_step = prev_step
+                self._pipe_counter = prev_counter
+                return result
+
+            return wrapper  # type: ignore[return-value]
+
+        return decorator
+
+    def pipe(self, name: str | None = None, description: str = "") -> Callable[[F], F]:
+        """Decorator: instrumenta una función usada en `.pipe()` como sub-paso del step activo.
+
+        Emite eventos `pipe_started`/`pipe_finished` cuyo `step_id` apunta al
+        step actualmente en ejecución (el que decoró la función llamadora con
+        `@logger.step(...)`). Fuera de un step activo, el decorator es no-op,
+        así los tests unitarios siguen llamando los pipes sin instrumentación.
+
+        El nombre por defecto es `func.__name__`. La descripción es opcional
+        pero recomendada — aparece en el viewer al hacer hover sobre el pipe.
+        Convención: el primer argumento posicional es el DataFrame de entrada;
+        de ahí se infieren `rows_in` / `rows_out`.
+        """
+        def decorator(func: F) -> F:
+            @wraps(func)
+            def wrapper(*args: Any, **kwargs: Any) -> Any:
+                # No-op si no hay ejecución activa o no hay step padre:
+                # los pipes se llaman tal cual en los tests de transformaciones puras.
+                if self._fh is None or self._current_step is None:
+                    return func(*args, **kwargs)
+
+                parent = self._current_step
+                self._pipe_counter += 1
+                pipe_order = self._pipe_counter
+                pipe_id = f"{parent['step_id']}.{func.__name__}"
+                pipe_name = name or func.__name__
+                rows_in = _safe_len(args[0]) if args else None
+
+                t0 = time.monotonic()
+                self._emit(
+                    event="pipe_started",
+                    level="info",
+                    status="running",
+                    layer=parent["layer"],
+                    layer_order=parent["layer_order"],
+                    step_id=parent["step_id"],
+                    pipe_id=pipe_id,
+                    pipe_name=pipe_name,
+                    pipe_order=pipe_order,
+                    description=description,
+                    rows_in=rows_in,
+                )
+
+                try:
+                    result = func(*args, **kwargs)
+                except BaseException as exc:
+                    self._emit(
+                        event="pipe_finished",
+                        level="error",
+                        status="error",
+                        layer=parent["layer"],
+                        layer_order=parent["layer_order"],
+                        step_id=parent["step_id"],
+                        pipe_id=pipe_id,
+                        pipe_name=pipe_name,
+                        pipe_order=pipe_order,
+                        description=description,
+                        duration_ms=int((time.monotonic() - t0) * 1000),
+                        rows_in=rows_in,
+                        error={
+                            "type": type(exc).__name__,
+                            "message": str(exc),
+                            "traceback": "".join(traceback.format_exception(exc)),
+                        },
+                    )
+                    raise
+
+                rows_out = _safe_len(result)
+                self._emit(
+                    event="pipe_finished",
+                    level="info",
+                    status="success",
+                    layer=parent["layer"],
+                    layer_order=parent["layer_order"],
+                    step_id=parent["step_id"],
+                    pipe_id=pipe_id,
+                    pipe_name=pipe_name,
+                    pipe_order=pipe_order,
+                    description=description,
+                    duration_ms=int((time.monotonic() - t0) * 1000),
+                    rows_in=rows_in,
+                    rows_out=rows_out,
                 )
                 return result
 

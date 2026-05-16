@@ -2,7 +2,13 @@ from __future__ import annotations
 
 import pandas as pd
 
+from medallion_etl.observability import logger
 
+
+@logger.pipe(
+    name="Aggregate daily",
+    description="Agrupa por (order_date, currency) y suma totales en una tabla de hechos diaria.",
+)
 def aggregate_daily(silver: pd.DataFrame) -> pd.DataFrame:
     out = (
         silver.assign(order_date=silver["order_ts"].dt.floor("D"))
