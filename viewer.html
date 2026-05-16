@@ -330,9 +330,12 @@
     border-left-width: 3px;
     border-radius: 6px;
     padding: 10px 14px;
-    min-width: 160px;
+    /* Normal step boxes size to their content; transform boxes have a
+       slightly larger floor so the pipe column inside has room to breathe. */
     cursor: pointer;
     transition: border-color 0.1s, background 0.1s;
+    align-self: flex-start;
+    display: flex; flex-direction: column;
   }
   .flow-box:hover { background: var(--panel-2); }
   .flow-box.success  { border-left-color: var(--green); }
@@ -347,19 +350,24 @@
     font-size: 11px; color: var(--muted);
     margin-top: 6px; font-family: var(--mono);
   }
-  .flow-box.has-pipes { min-width: 220px; }
+  .flow-box.has-pipes { min-width: 200px; }
   .flow-box .transform-badge {
     font-size: 8px; letter-spacing: 0.08em; text-transform: uppercase;
     padding: 1px 5px; border-radius: 3px;
     background: rgba(110,158,255,0.12); color: #6e9eff; font-weight: 700;
     margin-left: auto;
   }
-  .flow-box-head { display: flex; align-items: center; gap: 8px; }
 
+  /* Transform-step pipes stack VERTICALLY inside the box; if many pipes,
+     the column scrolls internally rather than stretching the box (or the
+     whole row) to fit. */
   .flow-pipes {
-    display: flex; flex-wrap: wrap; align-items: stretch;
+    display: flex; flex-direction: column;
     gap: 6px; margin-top: 10px; padding-top: 10px;
     border-top: 1px dashed var(--border);
+    max-height: 260px; overflow-y: auto;
+    /* Visual hint that the area scrolls. */
+    padding-right: 2px;
   }
   .flow-pipe {
     background: var(--panel-2);
@@ -367,7 +375,6 @@
     border-left-width: 2px;
     border-radius: 4px;
     padding: 6px 10px;
-    min-width: 120px;
     cursor: pointer;
     transition: border-color 0.1s, background 0.1s;
   }
@@ -385,11 +392,8 @@
     font-size: 10px; color: var(--muted);
     margin-top: 3px; font-family: var(--mono);
   }
-  .flow-pipe-arrow {
-    display: flex; align-items: center;
-    color: var(--muted); font-size: 13px;
-    user-select: none;
-  }
+  /* No inter-pipe arrow in the vertical column layout. */
+  .flow-pipe-arrow { display: none; }
 
   section.detail a {
     color: #6e9eff;
@@ -1285,7 +1289,7 @@ function renderLayerFlow(layer) {
       }).join("");
       pipesHtml = `<div class="flow-pipes">${pipeBoxes}</div>`;
     }
-    const box = `
+    return `
       <div class="flow-box ${s.status} ${hasPipes ? "has-pipes" : ""}" data-step-id="${escapeHtml(s.id)}" title="${escapeHtml(s.description || "")}">
         <div class="flow-box-head">
           <span class="dot ${s.status}"></span>
@@ -1295,8 +1299,6 @@ function renderLayerFlow(layer) {
         ${meta ? `<div class="flow-box-meta">${meta}</div>` : ""}
         ${pipesHtml}
       </div>`;
-    const arrow = i < steps.length - 1 ? `<div class="flow-arrow">→</div>` : "";
-    return box + arrow;
   }).join("");
 
   return `
