@@ -15,8 +15,8 @@ from medallion_etl.transformations.bronze.orders import stamp_ingest_metadata
 # Metadata estática + shapers para cada step registrado en el log.
 # Las claves del diccionario corresponden al `step_id` de cada paso.
 loginfo = build_loginfo({
-    "landing.read_csv": {
-        "layer": "landing", "layer_order": 0,
+    "bronze.read_csv": {
+        "layer": "bronze", "layer_order": 1,
         "step_name": "Leyendo CSV", "step_order": 0,
         "description": "Carga el CSV desde la zona de landing y estampa metadata de ingesta en cada fila.",
         "rows_out_fn": len,
@@ -24,7 +24,7 @@ loginfo = build_loginfo({
     },
     "bronze.write": {
         "layer": "bronze", "layer_order": 1,
-        "step_name": "Escribiendo parquet", "step_order": 0,
+        "step_name": "Escribiendo parquet", "step_order": 1,
         "description": "Escribe filas estampadas en bronze _staging y promueve atómicamente la partición del run.",
         "rows_in_fn": lambda df, **_: len(df),
         "extra_out_fn": lambda path: {"output_path": path},
@@ -35,7 +35,7 @@ loginfo = build_loginfo({
 # `lazy=True` hace que pandera recopile TODOS los errores de schema en lugar de
 # detenerse en el primero. Mejora el diagnóstico cuando varios checks fallan a
 # la vez. El costo de validación es el mismo.
-@logger.step(loginfo["landing.read_csv"])
+@logger.step(loginfo["bronze.read_csv"])
 @pa.check_types(lazy=True)
 def read_and_stamp(src: str) -> DataFrame[BronzeOrders]:
     return stamp_ingest_metadata(read_csv_landing(src), source_file=src)

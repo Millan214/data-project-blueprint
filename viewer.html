@@ -128,6 +128,7 @@
 
   .steps { padding: 4px 0 8px 0; border-top: 1px solid var(--border); }
   .step {
+    position: relative;
     display: flex; align-items: center; gap: 10px;
     padding: 8px 14px 8px 30px;
     cursor: pointer;
@@ -143,13 +144,19 @@
     padding: 1px 5px; border-radius: 3px;
     background: rgba(110,158,255,0.12); color: #6e9eff; font-weight: 700;
   }
+  /* Chevron floats to the LEFT of the row, outside the regular content flow,
+     so transform steps stay vertically-aligned with regular steps (no
+     visible indent). */
   .step .step-caret {
+    position: absolute;
+    left: 14px; top: 50%;
+    transform: translateY(-50%);
     font-size: 9px; color: var(--muted);
-    display: inline-block; transition: transform 0.15s ease;
     width: 12px; text-align: center; cursor: pointer;
-    margin-left: -6px;
+    transition: transform 0.15s ease;
+    z-index: 1;
   }
-  .step.collapsed .step-caret { transform: rotate(-90deg); }
+  .step.collapsed .step-caret { transform: translateY(-50%) rotate(-90deg); }
   .step.collapsed + .pipes { display: none; }
 
   .pipes {
@@ -402,6 +409,114 @@
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 
+  /* Bottom-centered usage dock — slides up from below with an animation.
+     Horizontally centered via translateX(-50%); the slide-up motion combines
+     the centering translate with a Y offset so we use a single transform. */
+  .usage-dock {
+    position: fixed;
+    bottom: 0;
+    left: 50%;
+    width: 480px;
+    height: 340px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-bottom: none;
+    border-radius: 8px 8px 0 0;
+    box-shadow: 0 -8px 24px rgba(0,0,0,0.35);
+    z-index: 50;
+    /* When closed, only the 36px header pokes out from the bottom of the window. */
+    transform: translate(-50%, calc(100% - 36px));
+    transition: transform 0.32s cubic-bezier(0.22, 0.61, 0.36, 1);
+    display: flex; flex-direction: column;
+  }
+  .usage-dock.open { transform: translate(-50%, 0); }
+  .usage-dock-head {
+    height: 36px; flex-shrink: 0;
+    padding: 0 14px;
+    display: flex; align-items: center; gap: 10px;
+    cursor: pointer; user-select: none;
+    background: var(--panel-2); border-bottom: 1px solid var(--border);
+    border-radius: 8px 8px 0 0;
+    transition: background 0.12s;
+  }
+  .usage-dock-head:hover { background: rgba(255,255,255,0.05); }
+  .usage-dock-title {
+    flex: 1;
+    font-size: 11px; font-weight: 600;
+    letter-spacing: 0.1em; text-transform: uppercase; color: var(--text);
+  }
+  .usage-dock-caret {
+    color: var(--muted); font-size: 11px;
+    transition: transform 0.3s cubic-bezier(0.22, 0.61, 0.36, 1);
+  }
+  .usage-dock.open .usage-dock-caret { transform: rotate(180deg); }
+  .usage-tabs {
+    display: flex; flex-shrink: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .usage-tab {
+    flex: 1;
+    background: transparent; border: none; color: var(--muted);
+    padding: 9px 0;
+    font: inherit; font-size: 10px; font-weight: 600;
+    letter-spacing: 0.1em; text-transform: uppercase;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: color 0.12s, border-color 0.12s, background 0.12s;
+  }
+  .usage-tab:hover { color: var(--text); background: rgba(255,255,255,0.03); }
+  .usage-tab.active { color: var(--text); border-bottom-color: var(--orange); }
+  .usage-body {
+    flex: 1; overflow: hidden;
+    padding: 14px 14px 12px 14px;
+    position: relative;
+  }
+  .usage-pane { display: none; height: 100%; flex-direction: column; gap: 10px; }
+  .usage-pane.active { display: flex; }
+  .usage-pane svg { flex: 1; width: 100%; display: block; }
+  .usage-stats {
+    display: flex; gap: 18px; flex-shrink: 0;
+    font-size: 11px; color: var(--muted); font-family: var(--mono);
+  }
+  .usage-stats strong { color: var(--text); font-weight: 600; }
+
+  .disk-kpi {
+    display: flex; flex-direction: column; gap: 18px;
+    justify-content: center; height: 100%;
+  }
+  .disk-bar {
+    height: 32px; border: 1px solid var(--border); border-radius: 6px;
+    background: rgba(255,255,255,0.03);
+    position: relative; overflow: hidden;
+  }
+  .disk-bar-fill {
+    position: absolute; top: 0; left: 0; bottom: 0;
+    background: linear-gradient(90deg, var(--green) 0%, var(--orange) 75%, var(--red) 100%);
+    transition: width 0.4s ease;
+  }
+  .disk-bar-label {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--mono); font-size: 12px; font-weight: 600;
+    color: var(--text); text-shadow: 0 1px 2px rgba(0,0,0,0.6);
+  }
+  .disk-num-row {
+    display: flex; gap: 20px; text-align: center;
+    justify-content: space-around;
+  }
+  .disk-num { display: flex; flex-direction: column; gap: 4px; flex: 1; }
+  .disk-num .label {
+    font-size: 9px; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.12em;
+  }
+  .disk-num .value {
+    font-family: var(--mono); font-size: 20px; font-weight: 600; color: var(--text);
+  }
+  .usage-empty {
+    display: flex; align-items: center; justify-content: center;
+    height: 100%; color: var(--muted); font-size: 12px; font-style: italic;
+  }
+
   /* Right actions sidebar */
   aside.actions {
     grid-area: actions;
@@ -469,6 +584,86 @@
     min-height: 18px;
   }
   body.actions-collapsed .run-status { display: none; }
+
+  /* Config section in the right sidebar */
+  .config-section {
+    margin-top: auto;
+    border-top: 1px solid var(--border);
+  }
+  body.actions-collapsed .config-section { display: none; }
+  .config-head {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 14px;
+    cursor: pointer; user-select: none;
+    font-size: 10px; font-weight: 600;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--muted);
+    transition: color 0.1s, background 0.1s;
+  }
+  .config-head:hover { color: var(--text); background: rgba(255,255,255,0.03); }
+  .config-head .caret {
+    font-size: 9px; width: 10px; text-align: center;
+    transition: transform 0.15s ease;
+  }
+  .config-section.collapsed .caret { transform: rotate(-90deg); }
+  .config-section.collapsed .config-body { display: none; }
+  .config-body {
+    padding: 6px 14px 14px 14px;
+    display: flex; flex-direction: column; gap: 12px;
+  }
+  .config-row { display: flex; flex-direction: column; gap: 6px; }
+  .config-label {
+    font-size: 9px; color: var(--muted);
+    letter-spacing: 0.1em; text-transform: uppercase; font-weight: 600;
+  }
+  .seg-group {
+    display: flex;
+    border: 1px solid var(--border); border-radius: 6px;
+    overflow: hidden;
+    background: var(--panel-2);
+  }
+  .seg {
+    flex: 1;
+    background: transparent; border: none;
+    border-right: 1px solid var(--border);
+    color: var(--muted);
+    padding: 6px 0;
+    font: inherit; font-size: 11px;
+    cursor: pointer;
+    transition: background 0.1s, color 0.1s;
+  }
+  .seg:last-child { border-right: none; }
+  .seg:hover { background: var(--bg); color: var(--text); }
+  .seg.active { background: var(--orange); color: #0e1217; font-weight: 600; }
+  .seg[data-fsz="sm"] { font-size: 10px; }
+  .seg[data-fsz="md"] { font-size: 12px; }
+  .seg[data-fsz="lg"] { font-size: 14px; }
+
+  /* Font-size scaling via CSS `zoom` (cleanest cross-element scaler). */
+  body.fsz-sm { zoom: 0.9; }
+  body.fsz-md { zoom: 1; }
+  body.fsz-lg { zoom: 1.15; }
+
+  /* Light theme — overrides the CSS variables defined on :root. */
+  body.theme-light {
+    --bg: #f6f8fa;
+    --panel: #ffffff;
+    --panel-2: #eef1f5;
+    --border: #d0d7de;
+    --text: #1f2328;
+    --muted: #57606a;
+    --green: #1a7f37;
+    --red: #cf222e;
+    --orange: #bf8700;
+    --gray: #6e7781;
+  }
+  body.theme-light .seg.active { color: #ffffff; }
+  body.theme-light .err-box .file-path { color: #0969da; }
+  body.theme-light .err-box .file-num { color: #9a6700; }
+  body.theme-light .err-box .ftype { color: #6639ba; }
+  body.theme-light .run-btn { background: var(--panel-2); }
+  body.theme-light .run-btn:hover { background: var(--bg); }
+  body.theme-light .disk-bar-label { text-shadow: none; }
 </style>
 </head>
 <body>
@@ -502,6 +697,31 @@
   <div class="empty">No execution selected.</div>
 </section>
 
+<div class="usage-dock" id="usage-dock">
+  <div class="usage-dock-head" id="usage-dock-toggle">
+    <span class="usage-dock-title">📊 Usage</span>
+    <span class="usage-dock-caret">▲</span>
+  </div>
+  <div class="usage-tabs">
+    <button class="usage-tab active" data-tab="cpu">CPU</button>
+    <button class="usage-tab" data-tab="mem">Memory</button>
+    <button class="usage-tab" data-tab="disk">Disk</button>
+  </div>
+  <div class="usage-body">
+    <div class="usage-pane active" data-pane="cpu">
+      <svg id="cpu-chart" viewBox="0 0 460 200" preserveAspectRatio="none"></svg>
+      <div class="usage-stats" id="cpu-stats"></div>
+    </div>
+    <div class="usage-pane" data-pane="mem">
+      <svg id="mem-chart" viewBox="0 0 460 200" preserveAspectRatio="none"></svg>
+      <div class="usage-stats" id="mem-stats"></div>
+    </div>
+    <div class="usage-pane" data-pane="disk">
+      <div class="disk-kpi" id="disk-kpi"></div>
+    </div>
+  </div>
+</div>
+
 <aside class="actions" id="actions">
   <div class="actions-head">
     <span class="toggle" id="actions-toggle" title="Collapse / expand">›</span>
@@ -526,6 +746,44 @@
     </button>
   </div>
   <div class="run-status" id="run-status"></div>
+
+  <div class="config-section" id="config-section">
+    <div class="config-head" id="config-toggle">
+      <span class="caret">▼</span>
+      <span>Config</span>
+    </div>
+    <div class="config-body">
+      <div class="config-row">
+        <span class="config-label">Theme</span>
+        <div class="seg-group">
+          <button class="seg" data-theme="dark">Dark</button>
+          <button class="seg" data-theme="light">Light</button>
+        </div>
+      </div>
+      <div class="config-row">
+        <span class="config-label">Font size</span>
+        <div class="seg-group">
+          <button class="seg" data-fsz="sm">A</button>
+          <button class="seg" data-fsz="md">A</button>
+          <button class="seg" data-fsz="lg">A</button>
+        </div>
+      </div>
+      <div class="config-row">
+        <span class="config-label">Follow latest run</span>
+        <div class="seg-group">
+          <button class="seg" data-follow="on">On</button>
+          <button class="seg" data-follow="off">Off</button>
+        </div>
+      </div>
+      <div class="config-row">
+        <span class="config-label">Chart smoothing</span>
+        <div class="seg-group">
+          <button class="seg" data-smooth="off">Sharp</button>
+          <button class="seg" data-smooth="on">Smooth</button>
+        </div>
+      </div>
+    </div>
+  </div>
 </aside>
 
 <script>
@@ -543,6 +801,7 @@ const state = {
   collapsedSteps: new Set(),
   animatedLayers: new Set(),
   run: null,          // { meta, layers: Map<order, layerObj>, byStepId: Map }
+  usage: [],          // array of usage samples for the selected execution
 };
 
 // ---------- fetch helpers ----------
@@ -1149,9 +1408,21 @@ async function pollIndex() {
   try {
     const data = await fetchJSON(`${LOGS_DIR}/index.json`);
     state.executions = data.executions || [];
-    if (state.selectedExecId == null && state.executions.length) {
-      state.selectedExecId = state.executions[state.executions.length - 1].id;
+    const curMaxId = state.executions.length
+      ? state.executions[state.executions.length - 1].id
+      : null;
+    // Auto-jump to the latest run:
+    //   * always on initial load (no selection yet)
+    //   * when "Follow latest run" is ON and a strictly newer id has appeared
+    const noSelection = state.selectedExecId == null;
+    const newerAvailable =
+      curMaxId != null && state.selectedExecId != null && curMaxId > state.selectedExecId;
+    if (curMaxId != null && (noSelection || (state.followLatest && newerAvailable))) {
+      state.selectedExecId = curMaxId;
+      state.selectedStepId = null;
+      state.selectedPipeId = null;
       state.animatedLayers = new Set();
+      state.run = null;
       pollRun();
     }
     renderExecPicker();
@@ -1166,14 +1437,275 @@ async function pollRun() {
   if (!e) return;
   try {
     const events = await fetchJSONL(`${LOGS_DIR}/${e.file}`);
+    // Usage samples live in a sibling file: replace `-info.jsonl` with
+    // `-usage.jsonl`. Tolerate it being absent (older runs / no psutil).
+    const usageFile = e.file.replace(/-info\.jsonl$/, "-usage.jsonl");
+    const samples = await fetchJSONL(`${LOGS_DIR}/${usageFile}`).catch(() => []);
     state.run = buildRunModel(events);
+    state.usage = samples;
     renderHeader(state.run);
+    renderUsage(state.usage);
     renderRail(state.run);
     renderDetail(state.run);
   } catch (_) {
     // ignore transient errors
   }
 }
+
+function renderUsage(samples) {
+  renderUsageDock(samples || []);
+}
+
+// ---------- Usage dock ----------
+function renderLineChart(svg, samples, valueFn, opts = {}) {
+  const W = 460, H = 200, padL = 38, padR = 8, padT = 10, padB = 22;
+  const innerW = W - padL - padR;
+  const innerH = H - padT - padB;
+  const color = opts.color || "var(--orange)";
+  const unit = opts.unit || "";
+
+  if (!samples || !samples.length) {
+    svg.innerHTML = `<text x="${W/2}" y="${H/2}" text-anchor="middle" fill="#7d8590" font-size="12" font-style="italic">No samples yet — run the pipeline.</text>`;
+    return;
+  }
+
+  const values = samples.map(valueFn).map(v => v == null ? 0 : v);
+  const dataMax = Math.max(...values, opts.minMax ?? 1);
+  // Always show 0 at bottom; if `max` is given, use it as a fixed cap
+  // (good for percentages); otherwise round the data max up to a nice number.
+  const max = opts.max != null ? opts.max : niceCeil(dataMax * 1.1);
+  const min = 0;
+
+  const xStep = samples.length > 1 ? innerW / (samples.length - 1) : 0;
+  const yScale = (v) => padT + innerH - ((v - min) / (max - min)) * innerH;
+
+  // Build polyline (or smoothed cubic curve) + filled area path.
+  const points = samples.map((s, i) => {
+    const v = valueFn(s) ?? 0;
+    const x = padL + i * xStep;
+    const y = yScale(v);
+    return [parseFloat(x.toFixed(1)), parseFloat(y.toFixed(1))];
+  });
+  const linePath = state.chartSmoothing
+    ? smoothPath(points)
+    : points.map((p, i) => (i === 0 ? "M" : "L") + p[0] + "," + p[1]).join(" ");
+  const baseY = (padT + innerH).toFixed(1);
+  const lastX = points[points.length - 1][0];
+  const firstX = points[0][0];
+  const areaPath = linePath + ` L${lastX},${baseY} L${firstX},${baseY} Z`;
+
+  // Y gridlines + labels (5 ticks).
+  let grid = "";
+  for (let i = 0; i <= 4; i++) {
+    const v = min + (max - min) * (i / 4);
+    const y = yScale(v).toFixed(1);
+    grid += `<line x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}" stroke="#2a313c" stroke-width="0.5" opacity="0.7"/>`;
+    grid += `<text x="${padL - 6}" y="${(parseFloat(y) + 3).toFixed(1)}" text-anchor="end" fill="#7d8590" font-size="9" font-family="ui-monospace, monospace">${formatTick(v)}${unit}</text>`;
+  }
+
+  // X axis: a few timestamp labels.
+  let xLabels = "";
+  if (samples.length > 1) {
+    const tickCount = Math.min(4, samples.length);
+    for (let i = 0; i < tickCount; i++) {
+      const idx = Math.round((samples.length - 1) * (i / (tickCount - 1)));
+      const x = (padL + idx * xStep).toFixed(1);
+      const t = samples[idx].ts ? new Date(samples[idx].ts).toLocaleTimeString() : `${idx}s`;
+      xLabels += `<text x="${x}" y="${H - 6}" text-anchor="${i === 0 ? "start" : i === tickCount - 1 ? "end" : "middle"}" fill="#7d8590" font-size="9" font-family="ui-monospace, monospace">${t}</text>`;
+    }
+  }
+
+  svg.innerHTML = `
+    ${grid}
+    <path d="${areaPath}" fill="${color}" opacity="0.18"/>
+    <path d="${linePath}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linejoin="round"/>
+    ${xLabels}
+  `;
+}
+
+// Catmull-Rom → cubic Bézier conversion. Produces a smooth path through all
+// the given points. `tension` ≈ 0.2 gives a gentle curve without overshoot.
+function smoothPath(points, tension = 0.2) {
+  if (points.length < 2) return "";
+  if (points.length === 2) {
+    return `M${points[0][0]},${points[0][1]} L${points[1][0]},${points[1][1]}`;
+  }
+  let d = `M${points[0][0]},${points[0][1]}`;
+  for (let i = 0; i < points.length - 1; i++) {
+    const p0 = points[i - 1] || points[i];
+    const p1 = points[i];
+    const p2 = points[i + 1];
+    const p3 = points[i + 2] || p2;
+    const cp1x = p1[0] + (p2[0] - p0[0]) * tension;
+    const cp1y = p1[1] + (p2[1] - p0[1]) * tension;
+    const cp2x = p2[0] - (p3[0] - p1[0]) * tension;
+    const cp2y = p2[1] - (p3[1] - p1[1]) * tension;
+    d += ` C${cp1x.toFixed(1)},${cp1y.toFixed(1)} ${cp2x.toFixed(1)},${cp2y.toFixed(1)} ${p2[0]},${p2[1]}`;
+  }
+  return d;
+}
+
+function niceCeil(v) {
+  if (v <= 0) return 1;
+  const pow = Math.pow(10, Math.floor(Math.log10(v)));
+  const norm = v / pow;
+  let nice;
+  if (norm <= 1) nice = 1;
+  else if (norm <= 2) nice = 2;
+  else if (norm <= 5) nice = 5;
+  else nice = 10;
+  return nice * pow;
+}
+
+function formatTick(v) {
+  if (v >= 1000) return (v / 1000).toFixed(1) + "k";
+  if (v >= 10) return v.toFixed(0);
+  return v.toFixed(1);
+}
+
+function renderUsageDock(samples) {
+  // CPU
+  renderLineChart(
+    document.getElementById("cpu-chart"),
+    samples,
+    s => s.cpu_proc_pct,
+    { color: "#3fb950", unit: "%", minMax: 10 },
+  );
+  document.getElementById("cpu-stats").innerHTML = samples.length
+    ? `<span>Peak <strong>${Math.max(...samples.map(s => s.cpu_proc_pct ?? 0)).toFixed(1)}%</strong></span>
+       <span>Avg <strong>${(samples.reduce((a, s) => a + (s.cpu_proc_pct ?? 0), 0) / samples.length).toFixed(1)}%</strong></span>
+       <span>System peak <strong>${Math.max(...samples.map(s => s.cpu_system_pct ?? 0)).toFixed(1)}%</strong></span>
+       <span>Samples <strong>${samples.length}</strong></span>`
+    : `<span>Run the pipeline to populate.</span>`;
+
+  // Memory (system %) — capped at 100 on the y-axis.
+  renderLineChart(
+    document.getElementById("mem-chart"),
+    samples,
+    s => s.mem_system_pct,
+    { color: "#bc8cff", unit: "%", max: 100 },
+  );
+  document.getElementById("mem-stats").innerHTML = samples.length
+    ? `<span>Peak <strong>${Math.max(...samples.map(s => s.mem_system_pct ?? 0)).toFixed(1)}%</strong></span>
+       <span>Avg <strong>${(samples.reduce((a, s) => a + (s.mem_system_pct ?? 0), 0) / samples.length).toFixed(1)}%</strong></span>
+       <span>Process peak <strong>${Math.max(...samples.map(s => s.mem_proc_rss_mb ?? 0)).toFixed(0)} MB</strong></span>
+       <span>Samples <strong>${samples.length}</strong></span>`
+    : `<span>Run the pipeline to populate.</span>`;
+
+  // Disk KPI
+  const diskEl = document.getElementById("disk-kpi");
+  const lastDisk = [...samples].reverse().find(s => s.disk_free_gb != null);
+  if (lastDisk) {
+    const free = lastDisk.disk_free_gb;
+    const total = lastDisk.disk_total_gb;
+    const used = Math.max(0, total - free);
+    const pct = lastDisk.disk_used_pct;
+    diskEl.innerHTML = `
+      <div class="disk-bar">
+        <div class="disk-bar-fill" style="width: ${pct.toFixed(1)}%"></div>
+        <div class="disk-bar-label">${pct.toFixed(1)}% used</div>
+      </div>
+      <div class="disk-num-row">
+        <div class="disk-num"><div class="label">Free</div><div class="value">${free.toFixed(1)} GB</div></div>
+        <div class="disk-num"><div class="label">Used</div><div class="value">${used.toFixed(1)} GB</div></div>
+        <div class="disk-num"><div class="label">Total</div><div class="value">${total.toFixed(1)} GB</div></div>
+      </div>
+    `;
+  } else {
+    diskEl.innerHTML = `<div class="usage-empty">No disk samples yet.</div>`;
+  }
+}
+
+// Dock toggle + tab switching, with localStorage persistence.
+const USAGE_DOCK_OPEN_KEY = "viewer.usageDock.open";
+const USAGE_DOCK_TAB_KEY = "viewer.usageDock.tab";
+if (localStorage.getItem(USAGE_DOCK_OPEN_KEY) === "1") {
+  document.getElementById("usage-dock").classList.add("open");
+}
+document.getElementById("usage-dock-toggle").addEventListener("click", () => {
+  const dock = document.getElementById("usage-dock");
+  const open = dock.classList.toggle("open");
+  localStorage.setItem(USAGE_DOCK_OPEN_KEY, open ? "1" : "0");
+});
+
+function selectUsageTab(name) {
+  document.querySelectorAll(".usage-tab").forEach(b => b.classList.toggle("active", b.dataset.tab === name));
+  document.querySelectorAll(".usage-pane").forEach(p => p.classList.toggle("active", p.dataset.pane === name));
+  localStorage.setItem(USAGE_DOCK_TAB_KEY, name);
+}
+document.querySelectorAll(".usage-tab").forEach(btn => {
+  btn.addEventListener("click", () => selectUsageTab(btn.dataset.tab));
+});
+const savedTab = localStorage.getItem(USAGE_DOCK_TAB_KEY);
+if (savedTab) selectUsageTab(savedTab);
+
+// ---------- config (theme + font size + follow + smoothing) ----------
+const THEME_KEY = "viewer.theme";
+const FSZ_KEY = "viewer.fontSize";
+const FOLLOW_KEY = "viewer.followLatest";
+const SMOOTH_KEY = "viewer.chartSmoothing";
+const CONFIG_COLLAPSED_KEY = "viewer.config.collapsed";
+
+function applyTheme(t) {
+  document.body.classList.toggle("theme-light", t === "light");
+  document.querySelectorAll(".seg[data-theme]").forEach(b =>
+    b.classList.toggle("active", b.dataset.theme === t),
+  );
+  localStorage.setItem(THEME_KEY, t);
+}
+
+function applyFontSize(z) {
+  document.body.classList.remove("fsz-sm", "fsz-md", "fsz-lg");
+  document.body.classList.add("fsz-" + z);
+  document.querySelectorAll(".seg[data-fsz]").forEach(b =>
+    b.classList.toggle("active", b.dataset.fsz === z),
+  );
+  localStorage.setItem(FSZ_KEY, z);
+}
+
+function applyFollow(v) {
+  state.followLatest = v === "on";
+  document.querySelectorAll(".seg[data-follow]").forEach(b =>
+    b.classList.toggle("active", b.dataset.follow === v),
+  );
+  localStorage.setItem(FOLLOW_KEY, v);
+}
+
+function applySmooth(v) {
+  state.chartSmoothing = v === "on";
+  document.querySelectorAll(".seg[data-smooth]").forEach(b =>
+    b.classList.toggle("active", b.dataset.smooth === v),
+  );
+  localStorage.setItem(SMOOTH_KEY, v);
+  // Re-render charts immediately so the change is visible without waiting for the next poll.
+  if (state.usage && state.usage.length) renderUsageDock(state.usage);
+}
+
+applyTheme(localStorage.getItem(THEME_KEY) || "dark");
+applyFontSize(localStorage.getItem(FSZ_KEY) || "md");
+applyFollow(localStorage.getItem(FOLLOW_KEY) || "on");
+applySmooth(localStorage.getItem(SMOOTH_KEY) || "off");
+if (localStorage.getItem(CONFIG_COLLAPSED_KEY) === "1") {
+  document.getElementById("config-section").classList.add("collapsed");
+}
+
+document.querySelectorAll(".seg[data-theme]").forEach(b => {
+  b.addEventListener("click", () => applyTheme(b.dataset.theme));
+});
+document.querySelectorAll(".seg[data-fsz]").forEach(b => {
+  b.addEventListener("click", () => applyFontSize(b.dataset.fsz));
+});
+document.querySelectorAll(".seg[data-follow]").forEach(b => {
+  b.addEventListener("click", () => applyFollow(b.dataset.follow));
+});
+document.querySelectorAll(".seg[data-smooth]").forEach(b => {
+  b.addEventListener("click", () => applySmooth(b.dataset.smooth));
+});
+document.getElementById("config-toggle").addEventListener("click", () => {
+  const sec = document.getElementById("config-section");
+  const collapsed = sec.classList.toggle("collapsed");
+  localStorage.setItem(CONFIG_COLLAPSED_KEY, collapsed ? "1" : "0");
+});
 
 // ---------- right actions sidebar ----------
 const ACTIONS_COLLAPSED_KEY = "viewer.actions.collapsed";

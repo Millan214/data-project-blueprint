@@ -1,6 +1,13 @@
 """Registro de eventos append-only para ejecuciones de pipeline.
 
-Una ejecución = un archivo JSONL en `<storage_root>/<logs_dir>/run-NNNNNN.jsonl`.
+Una ejecución = un directorio en `<storage_root>/<logs_dir>/run-NNNNNN/`,
+con dos archivos JSONL hermanos:
+
+  - `run-NNNNNN-info.jsonl`   eventos del pipeline (execution / step / pipe)
+  - `run-NNNNNN-usage.jsonl`  muestras periódicas de CPU / memoria / disco
+
+El índice (`<logs_dir>/index.json`) apunta al archivo info; el viewer
+descubre el archivo de usage por convención (mismo nombre, sufijo `-usage`).
 
 Uso:
 
@@ -41,11 +48,17 @@ from functools import wraps
 from pathlib import Path
 from typing import IO, Any, Iterator, Self, TypedDict, TypeVar
 
+import psutil
+
 from medallion_etl.settings import settings
 
 F = TypeVar("F", bound=Callable[..., Any])
 
-_RUN_FILE_RE = re.compile(r"^run-(\d{6})\.jsonl$")
+# Each run lives in its own directory like `run-000017/`. Inside it:
+#   - run-000017-info.jsonl   (pipeline events)
+#   - run-000017-usage.jsonl  (periodic CPU/memory/disk samples)
+_RUN_DIR_RE = re.compile(r"^run-(\d{6})$")
+_USAGE_INTERVAL_S = 1.0
 
 
 class StepInfo(TypedDict, total=False):
@@ -125,7 +138,7 @@ def _next_execution_id(root: Path) -> int:
     used = [
         int(m.group(1))
         for p in root.iterdir()
-        if (m := _RUN_FILE_RE.match(p.name))
+        if p.is_dir() and (m := _RUN_DIR_RE.match(p.name))
     ]
     return max(used, default=0) + 1
 
@@ -134,12 +147,80 @@ def _now_iso() -> str:
     return datetime.now(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
+class _UsageSampler:
+    """Background thread that periodically writes CPU / memory / disk samples.
+
+    Sampling stops as soon as `.stop()` is called (or the process exits, since
+    the thread is a daemon). Each sample is one JSONL line keyed by execution id.
+    """
+
+    def __init__(self, fh: IO[str], execution_id: int, disk_path: Path, interval_s: float = _USAGE_INTERVAL_S):
+        self._fh = fh
+        self._execution_id = execution_id
+        self._disk_path = str(disk_path)
+        self._interval = interval_s
+        self._stop = threading.Event()
+        self._proc = psutil.Process()
+        # Prime the per-call CPU counters so the first real sample is meaningful.
+        try:
+            self._proc.cpu_percent(interval=None)
+            psutil.cpu_percent(interval=None)
+        except Exception:
+            pass
+        self._thread = threading.Thread(target=self._run, name="usage-sampler", daemon=True)
+
+    def start(self) -> None:
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._stop.set()
+        self._thread.join(timeout=2.0)
+
+    def _run(self) -> None:
+        # Wait one tick before the first sample so cpu_percent has data to diff.
+        if self._stop.wait(self._interval):
+            return
+        while not self._stop.is_set():
+            try:
+                self._emit_sample()
+            except Exception:
+                # Sampler must never crash the pipeline — swallow and keep going.
+                pass
+            if self._stop.wait(self._interval):
+                break
+
+    def _emit_sample(self) -> None:
+        cpu_proc = self._proc.cpu_percent(interval=None)
+        cpu_sys = psutil.cpu_percent(interval=None)
+        mem_sys = psutil.virtual_memory()
+        mem_proc_rss = self._proc.memory_info().rss
+        sample: dict[str, Any] = {
+            "ts": _now_iso(),
+            "execution_id": self._execution_id,
+            "cpu_proc_pct": round(cpu_proc, 2),
+            "cpu_system_pct": round(cpu_sys, 2),
+            "mem_proc_rss_mb": round(mem_proc_rss / (1024 * 1024), 2),
+            "mem_system_pct": round(mem_sys.percent, 2),
+        }
+        try:
+            disk = psutil.disk_usage(self._disk_path)
+            sample["disk_free_gb"] = round(disk.free / (1024 ** 3), 2)
+            sample["disk_total_gb"] = round(disk.total / (1024 ** 3), 2)
+            sample["disk_used_pct"] = round(disk.percent, 2)
+        except OSError:
+            pass
+        self._fh.write(json.dumps(sample) + "\n")
+        self._fh.flush()
+
+
 class PipelineLogger:
     """Singleton a nivel de módulo. Una ejecución abierta a la vez, por proceso."""
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._fh: IO[str] | None = None
+        self._usage_fh: IO[str] | None = None
+        self._sampler: _UsageSampler | None = None
         self._execution_id: int | None = None
         self._pipeline: str | None = None
         self._t_started: float | None = None
@@ -396,19 +477,26 @@ class PipelineLogger:
             root.mkdir(parents=True, exist_ok=True)
             self._execution_id = _next_execution_id(root)
             self._pipeline = pipeline
-            path = root / f"run-{self._execution_id:06d}.jsonl"
-            self._fh = path.open("a", encoding="utf-8")
+            run_dir = root / f"run-{self._execution_id:06d}"
+            run_dir.mkdir(parents=True, exist_ok=True)
+            info_path = run_dir / f"run-{self._execution_id:06d}-info.jsonl"
+            usage_path = run_dir / f"run-{self._execution_id:06d}-usage.jsonl"
+            self._fh = info_path.open("a", encoding="utf-8")
+            self._usage_fh = usage_path.open("a", encoding="utf-8")
             self._t_started = time.monotonic()
             self._t_started_iso = _now_iso()
             self._layers_seen.clear()
             self._layers_completed.clear()
             self._emit(event="execution_started", level="info")
+            # Index entry points at the info file (the viewer fetches this path
+            # to replay events). Path is relative to _logs/ for portability.
+            rel_info = f"{run_dir.name}/{info_path.name}"
             _index_upsert(
                 root,
                 {
                     "id": self._execution_id,
                     "pipeline": pipeline,
-                    "file": path.name,
+                    "file": rel_info,
                     "started_at": self._t_started_iso,
                     "finished_at": None,
                     "status": "running",
@@ -416,11 +504,22 @@ class PipelineLogger:
                     "layers_seen": 0,
                 },
             )
+            # Start CPU/memory/disk sampler — runs until _close() stops it.
+            self._sampler = _UsageSampler(
+                self._usage_fh,
+                self._execution_id,
+                disk_path=root,
+            )
+            self._sampler.start()
 
     def _close(self, *, status: str) -> None:
         with self._lock:
             if self._fh is None:
                 return
+            # Stop sampling before we close the usage file handle.
+            if self._sampler is not None:
+                self._sampler.stop()
+                self._sampler = None
             duration_ms = int((time.monotonic() - (self._t_started or 0)) * 1000)
             finished_at = _now_iso()
             self._emit(
@@ -431,12 +530,13 @@ class PipelineLogger:
                 layers_completed=len(self._layers_completed),
                 layers_seen=len(self._layers_seen),
             )
+            rel_info = f"run-{self._execution_id:06d}/run-{self._execution_id:06d}-info.jsonl"
             _index_upsert(
                 _logs_root(),
                 {
                     "id": self._execution_id,
                     "pipeline": self._pipeline,
-                    "file": f"run-{self._execution_id:06d}.jsonl",
+                    "file": rel_info,
                     "started_at": self._t_started_iso,
                     "finished_at": finished_at,
                     "status": status,
@@ -447,6 +547,9 @@ class PipelineLogger:
             )
             self._fh.close()
             self._fh = None
+            if self._usage_fh is not None:
+                self._usage_fh.close()
+                self._usage_fh = None
             self._execution_id = None
             self._pipeline = None
             self._t_started = None
