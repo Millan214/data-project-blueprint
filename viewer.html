@@ -26,8 +26,12 @@
     font-size: 13px;
     display: grid;
     grid-template-rows: 64px 1fr;
-    grid-template-columns: 280px 1fr;
-    grid-template-areas: "logo header" "rail detail";
+    grid-template-columns: 280px 1fr 220px;
+    grid-template-areas: "logo header header" "rail detail actions";
+    transition: grid-template-columns 0.2s ease;
+  }
+  body.actions-collapsed {
+    grid-template-columns: 280px 1fr 36px;
   }
   header.top {
     grid-area: header;
@@ -342,6 +346,74 @@
   ::-webkit-scrollbar { width: 8px; height: 8px; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+  /* Right actions sidebar */
+  aside.actions {
+    grid-area: actions;
+    border-left: 1px solid var(--border);
+    background: var(--panel);
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    transition: padding 0.2s ease;
+  }
+  .actions-head {
+    display: flex; align-items: center; gap: 8px;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+    user-select: none;
+  }
+  .actions-head .toggle {
+    cursor: pointer;
+    color: var(--muted);
+    font-size: 11px;
+    width: 16px; text-align: center;
+    transition: transform 0.2s ease;
+  }
+  body.actions-collapsed .actions-head .toggle { transform: rotate(180deg); }
+  .actions-head .title {
+    font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--muted); font-weight: 600;
+    white-space: nowrap; overflow: hidden;
+  }
+  body.actions-collapsed .actions-head .title { display: none; }
+  body.actions-collapsed .actions-list { display: none; }
+  .actions-list {
+    display: flex; flex-direction: column; gap: 8px;
+    padding: 14px;
+  }
+  .run-btn {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 12px;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--gray);
+    border-radius: 6px;
+    color: var(--text);
+    font: inherit; font-size: 12px; font-weight: 500;
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.12s, border-color 0.12s, transform 0.05s;
+  }
+  .run-btn:hover { background: var(--bg); }
+  .run-btn:active { transform: translateY(1px); }
+  .run-btn.bronze { border-left-color: #cd7f32; }
+  .run-btn.silver { border-left-color: #c0c0c0; }
+  .run-btn.gold   { border-left-color: #ffd700; }
+  .run-btn.all    { border-left-color: var(--green); }
+  .run-btn .ico {
+    width: 18px; height: 18px;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 13px;
+  }
+  .run-btn .ico img { width: 16px; height: 16px; image-rendering: pixelated; }
+  .run-btn .label { flex: 1; }
+  .run-btn.busy { opacity: 0.55; cursor: wait; }
+  .run-status {
+    padding: 0 14px 14px 14px;
+    font-size: 11px; color: var(--muted);
+    min-height: 18px;
+  }
+  body.actions-collapsed .run-status { display: none; }
 </style>
 </head>
 <body>
@@ -374,6 +446,32 @@
 <section class="detail" id="detail">
   <div class="empty">No execution selected.</div>
 </section>
+
+<aside class="actions" id="actions">
+  <div class="actions-head">
+    <span class="toggle" id="actions-toggle" title="Collapse / expand">›</span>
+    <span class="title">Actions</span>
+  </div>
+  <div class="actions-list">
+    <button class="run-btn bronze" data-layer="bronze">
+      <span class="ico"><img src="public/png/bronze_ingot.png" alt=""></span>
+      <span class="label">Run bronze</span>
+    </button>
+    <button class="run-btn silver" data-layer="silver">
+      <span class="ico"><img src="public/png/silver_ingot.png" alt=""></span>
+      <span class="label">Run silver</span>
+    </button>
+    <button class="run-btn gold" data-layer="gold">
+      <span class="ico"><img src="public/png/gold_ingot.png" alt=""></span>
+      <span class="label">Run gold</span>
+    </button>
+    <button class="run-btn all" data-layer="all">
+      <span class="ico">▶</span>
+      <span class="label">Run all</span>
+    </button>
+  </div>
+  <div class="run-status" id="run-status"></div>
+</aside>
 
 <script>
 const LOGS_DIR = "data/_logs";
@@ -1011,6 +1109,38 @@ async function pollRun() {
     // ignore transient errors
   }
 }
+
+// ---------- right actions sidebar ----------
+const ACTIONS_COLLAPSED_KEY = "viewer.actions.collapsed";
+if (localStorage.getItem(ACTIONS_COLLAPSED_KEY) === "1") {
+  document.body.classList.add("actions-collapsed");
+}
+document.getElementById("actions-toggle").addEventListener("click", () => {
+  const collapsed = document.body.classList.toggle("actions-collapsed");
+  localStorage.setItem(ACTIONS_COLLAPSED_KEY, collapsed ? "1" : "0");
+});
+
+document.querySelectorAll(".run-btn").forEach((btn) => {
+  btn.addEventListener("click", async () => {
+    if (btn.classList.contains("busy")) return;
+    const layer = btn.dataset.layer;
+    const statusEl = document.getElementById("run-status");
+    btn.classList.add("busy");
+    statusEl.textContent = `Spawning ${layer}…`;
+    try {
+      const res = await fetch(`/run?layer=${encodeURIComponent(layer)}`, { method: "GET" });
+      if (!res.ok) {
+        statusEl.textContent = `Failed (${res.status} ${res.statusText})`;
+      } else {
+        statusEl.textContent = `Launched ${layer} in a new window.`;
+      }
+    } catch (err) {
+      statusEl.textContent = `Error: ${err.message}`;
+    } finally {
+      setTimeout(() => btn.classList.remove("busy"), 800);
+    }
+  });
+});
 
 pollIndex();
 pollRun();
