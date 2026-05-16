@@ -828,6 +828,11 @@
   .seg[data-fsz="sm"] { font-size: 10px; }
   .seg[data-fsz="md"] { font-size: 12px; }
   .seg[data-fsz="lg"] { font-size: 14px; }
+  .config-hint {
+    font-size: 9px; color: var(--muted); font-style: italic;
+    margin-top: 4px; min-height: 11px;
+  }
+  .config-hint.warn { color: var(--orange); font-style: normal; }
 
   /* Font-size scaling via CSS `zoom` (cleanest cross-element scaler). */
   body.fsz-sm { zoom: 0.9; }
@@ -973,6 +978,14 @@
           <button class="seg" data-smooth="on">Smooth</button>
         </div>
       </div>
+      <div class="config-row">
+        <span class="config-label">Notifications</span>
+        <div class="seg-group">
+          <button class="seg" data-notify="off">Off</button>
+          <button class="seg" data-notify="on">On</button>
+        </div>
+        <span class="config-hint" id="notify-hint"></span>
+      </div>
     </div>
   </div>
 </aside>
@@ -991,6 +1004,11 @@ const state = {
   collapsedLayers: new Set(),
   collapsedSteps: new Set(),
   animatedLayers: new Set(),
+  // Map<execution_id, status> from the previous index poll — used to detect
+  // run completions for browser notifications.
+  lastStatusByExecId: new Map(),
+  notificationsEnabled: false,
+  initialIndexLoad: true,
   run: null,          // { meta, layers: Map<order, layerObj>, byStepId: Map }
   usage: [],          // array of usage samples for the selected execution
 };
@@ -1909,6 +1927,23 @@ async function pollIndex() {
     const curMaxId = state.executions.length
       ? state.executions[state.executions.length - 1].id
       : null;
+    // Notification dispatch: fire one notification per run that transitions
+    // from `running` to a terminal status (success / error / etc). Skip the
+    // very first index poll so we don't notify for runs that finished before
+    // the viewer was even opened.
+    if (state.notificationsEnabled && !state.initialIndexLoad) {
+      for (const e of state.executions) {
+        const prev = state.lastStatusByExecId.get(e.id);
+        const cur = e.status;
+        if (cur && cur !== "running" && prev === "running") {
+          fireRunNotification(e);
+        }
+      }
+    }
+    // Refresh the per-run status cache for the next tick.
+    state.lastStatusByExecId.clear();
+    for (const e of state.executions) state.lastStatusByExecId.set(e.id, e.status);
+    state.initialIndexLoad = false;
     // Auto-jump to the latest run:
     //   * always on initial load (no selection yet)
     //   * when "Follow latest run" is ON and a strictly newer id has appeared
@@ -2147,6 +2182,7 @@ const THEME_KEY = "viewer.theme";
 const FSZ_KEY = "viewer.fontSize";
 const FOLLOW_KEY = "viewer.followLatest";
 const SMOOTH_KEY = "viewer.chartSmoothing";
+const NOTIFY_KEY = "viewer.notifications";
 const CONFIG_COLLAPSED_KEY = "viewer.config.collapsed";
 
 function applyTheme(t) {
@@ -2184,10 +2220,101 @@ function applySmooth(v) {
   if (state.usage && state.usage.length) renderUsageDock(state.usage);
 }
 
+function setNotifyButtons(v) {
+  document.querySelectorAll(".seg[data-notify]").forEach(b =>
+    b.classList.toggle("active", b.dataset.notify === v),
+  );
+}
+
+function setNotifyHint(text, warn) {
+  const hint = document.getElementById("notify-hint");
+  if (!hint) return;
+  hint.textContent = text || "";
+  hint.classList.toggle("warn", !!warn);
+}
+
+function applyNotify(v, fromUser) {
+  if (v === "on") {
+    if (!("Notification" in window)) {
+      state.notificationsEnabled = false;
+      setNotifyButtons("off");
+      setNotifyHint("Browser does not support notifications.", true);
+      localStorage.setItem(NOTIFY_KEY, "off");
+      return;
+    }
+    if (Notification.permission === "granted") {
+      state.notificationsEnabled = true;
+      setNotifyButtons("on");
+      setNotifyHint("");
+      localStorage.setItem(NOTIFY_KEY, "on");
+      return;
+    }
+    if (Notification.permission === "denied") {
+      state.notificationsEnabled = false;
+      setNotifyButtons("off");
+      setNotifyHint("Permission denied — enable in browser settings.", true);
+      localStorage.setItem(NOTIFY_KEY, "off");
+      return;
+    }
+    // Permission still "default"; only prompt on a user-initiated click so
+    // browsers don't block the request as an autoplay-style violation.
+    if (fromUser) {
+      Notification.requestPermission().then((perm) => {
+        if (perm === "granted") {
+          state.notificationsEnabled = true;
+          setNotifyButtons("on");
+          setNotifyHint("");
+          localStorage.setItem(NOTIFY_KEY, "on");
+        } else {
+          state.notificationsEnabled = false;
+          setNotifyButtons("off");
+          setNotifyHint("Permission denied — enable in browser settings.", true);
+          localStorage.setItem(NOTIFY_KEY, "off");
+        }
+      });
+    } else {
+      // Saved state was "on" but permission isn't granted yet — leave UI off
+      // until the user re-toggles it (silent fallback).
+      state.notificationsEnabled = false;
+      setNotifyButtons("off");
+      setNotifyHint("Click On to allow notifications.", false);
+      localStorage.setItem(NOTIFY_KEY, "off");
+    }
+  } else {
+    state.notificationsEnabled = false;
+    setNotifyButtons("off");
+    setNotifyHint("");
+    localStorage.setItem(NOTIFY_KEY, "off");
+  }
+}
+
+function fireRunNotification(execEntry) {
+  if (!state.notificationsEnabled || !("Notification" in window)) return;
+  if (Notification.permission !== "granted") return;
+  const status = execEntry.status || "done";
+  const titleIcon = status === "success" ? "✓" : status === "error" ? "✗" : "•";
+  const title = `${titleIcon} Pipeline ${status} · run #${execEntry.id}`;
+  const dur = execEntry.duration_ms != null ? `${(execEntry.duration_ms / 1000).toFixed(1)}s` : "—";
+  const body = `${execEntry.pipeline || "pipeline"} · ${dur}`;
+  try {
+    const n = new Notification(title, { body, tag: `run-${execEntry.id}` });
+    n.onclick = () => {
+      window.focus();
+      state.selectedExecId = execEntry.id;
+      state.selectedStepId = null;
+      state.selectedPipeId = null;
+      state.animatedLayers = new Set();
+      pollRun();
+      n.close();
+    };
+  } catch (_) { /* notification API errors are non-fatal */ }
+}
+
 applyTheme(localStorage.getItem(THEME_KEY) || "dark");
 applyFontSize(localStorage.getItem(FSZ_KEY) || "md");
 applyFollow(localStorage.getItem(FOLLOW_KEY) || "on");
 applySmooth(localStorage.getItem(SMOOTH_KEY) || "off");
+applyNotify(localStorage.getItem(NOTIFY_KEY) || "off", false);
 if (localStorage.getItem(CONFIG_COLLAPSED_KEY) === "1") {
   document.getElementById("config-section").classList.add("collapsed");
 }
@@ -2203,6 +2330,9 @@ document.querySelectorAll(".seg[data-follow]").forEach(b => {
 });
 document.querySelectorAll(".seg[data-smooth]").forEach(b => {
   b.addEventListener("click", () => applySmooth(b.dataset.smooth));
+});
+document.querySelectorAll(".seg[data-notify]").forEach(b => {
+  b.addEventListener("click", () => applyNotify(b.dataset.notify, true));
 });
 document.getElementById("config-toggle").addEventListener("click", () => {
   const sec = document.getElementById("config-section");
