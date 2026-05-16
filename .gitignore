@@ -56,4 +56,4 @@ data/
 *.log
 
 # Claude Code local
-.claude/settings.local.json
+.claude/
