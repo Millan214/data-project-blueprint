@@ -88,8 +88,27 @@
     border: 1px solid var(--border);
     border-radius: 6px;
     padding: 6px 8px;
-    margin-bottom: 16px;
+    margin-bottom: 8px;
     font: inherit;
+  }
+  .overview-btn {
+    width: 100%;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    padding: 7px 10px;
+    margin-bottom: 14px;
+    font: inherit; font-size: 11px; font-weight: 500;
+    text-align: left;
+    cursor: pointer;
+    display: flex; align-items: center; gap: 8px;
+    transition: background 0.1s, border-color 0.1s;
+  }
+  .overview-btn:hover { background: var(--panel-2); border-color: var(--muted); }
+  .overview-btn.active { border-color: var(--orange); color: var(--orange); }
+  .overview-btn .ico {
+    font-size: 13px;
   }
 
   .layer {
@@ -409,6 +428,80 @@
     text-align: center;
   }
 
+  /* Waterfall — Gantt-style timeline of step+pipe intervals for a run. */
+  .waterfall {
+    margin-top: 14px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+  }
+  .waterfall-head {
+    display: flex; justify-content: space-between; align-items: baseline;
+    margin-bottom: 12px; gap: 12px;
+  }
+  .waterfall-head h3 {
+    font-size: 11px; font-weight: 600; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--muted);
+  }
+  .waterfall-head .total {
+    font-size: 11px; color: var(--muted); font-family: var(--mono);
+  }
+  .wf-row {
+    display: grid;
+    grid-template-columns: 200px 1fr 80px;
+    align-items: center;
+    gap: 10px;
+    padding: 3px 0;
+    cursor: pointer;
+    border-radius: 4px;
+  }
+  .wf-row:hover { background: var(--panel-2); }
+  .wf-row.pipe { padding-left: 18px; }
+  .wf-row.pipe .wf-label { font-size: 11px; color: var(--muted); }
+  .wf-label {
+    font-size: 12px; color: var(--text);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .wf-label .layer-tag {
+    font-size: 8px; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--muted); flex-shrink: 0;
+  }
+  .wf-track {
+    position: relative;
+    height: 18px;
+    background: rgba(255,255,255,0.02);
+    border-radius: 3px;
+  }
+  .wf-bar {
+    position: absolute; top: 2px; bottom: 2px;
+    border-radius: 3px;
+    background: var(--gray);
+    transition: opacity 0.1s;
+    min-width: 2px;
+  }
+  .wf-bar.success { background: var(--green); }
+  .wf-bar.error { background: var(--red); }
+  .wf-bar.running { background: var(--orange); animation: pulse 1.2s ease-in-out infinite; }
+  .wf-bar.pipe { top: 4px; bottom: 4px; opacity: 0.7; }
+  .wf-row:hover .wf-bar { opacity: 1; }
+  .wf-dur {
+    font-size: 11px; font-family: var(--mono); color: var(--muted);
+    text-align: right;
+  }
+  .wf-axis {
+    display: grid;
+    grid-template-columns: 200px 1fr 80px;
+    gap: 10px;
+    font-size: 10px; color: var(--muted); font-family: var(--mono);
+    padding-top: 6px; margin-top: 8px;
+    border-top: 1px solid var(--border);
+  }
+  .wf-axis-ticks {
+    display: flex; justify-content: space-between;
+  }
+
   ::-webkit-scrollbar { width: 8px; height: 8px; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
@@ -694,6 +787,7 @@
 
 <aside class="rail">
   <select class="exec-picker" id="exec-picker"></select>
+  <button class="overview-btn" id="overview-btn"><span class="ico">▤</span><span>Run overview</span></button>
   <div class="timeline" id="layers"></div>
 </aside>
 
@@ -865,9 +959,11 @@ function buildRunModel(events) {
       if (ev.description != null) step.description = ev.description;
       if (ev.event === "step_started") {
         step.status = "running";
+        step.startTs = ev.ts;
         if (ev.rows_in != null) step.rowsIn = ev.rows_in;
       } else {
         step.status = ev.status || "success";
+        step.endTs = ev.ts;
         step.durationMs = ev.duration_ms ?? null;
         if (ev.rows_in != null) step.rowsIn = ev.rows_in;
         if (ev.rows_out != null) step.rowsOut = ev.rows_out;
@@ -912,9 +1008,11 @@ function buildRunModel(events) {
       if (ev.description != null) pipe.description = ev.description;
       if (ev.event === "pipe_started") {
         pipe.status = "running";
+        pipe.startTs = ev.ts;
         if (ev.rows_in != null) pipe.rowsIn = ev.rows_in;
       } else {
         pipe.status = ev.status || "success";
+        pipe.endTs = ev.ts;
         pipe.durationMs = ev.duration_ms ?? null;
         if (ev.rows_in != null) pipe.rowsIn = ev.rows_in;
         if (ev.rows_out != null) pipe.rowsOut = ev.rows_out;
@@ -987,6 +1085,11 @@ function renderHeader(run) {
 function renderRail(run) {
   const root = document.getElementById("layers");
   root.innerHTML = "";
+  const overviewBtn = document.getElementById("overview-btn");
+  if (overviewBtn) {
+    overviewBtn.classList.toggle("active",
+      state.selectedStepId == null && state.selectedLayerOrder == null);
+  }
   if (!run) return;
   const layerArr = [...run.layers.values()].sort((a,b)=>a.order-b.order);
   for (const layer of layerArr) {
@@ -1097,6 +1200,12 @@ function renderDetail(run) {
   const el = document.getElementById("detail");
   if (!run) { el.innerHTML = `<div class="empty">No execution selected.</div>`; return; }
 
+  // Default view (no specific selection) — show the Run overview with waterfall.
+  if (state.selectedStepId == null && state.selectedLayerOrder == null) {
+    el.innerHTML = renderRunOverview(run);
+    return;
+  }
+
   // Layer-level view: render flow diagram of steps.
   if (state.selectedStepId == null && state.selectedLayerOrder != null) {
     const layer = run.layers.get(state.selectedLayerOrder);
@@ -1104,12 +1213,6 @@ function renderDetail(run) {
   }
 
   let step = state.selectedStepId ? run.byStepId.get(state.selectedStepId) : null;
-  if (!step) {
-    // default selection: first errored, else last running, else last success
-    const all = [...run.byStepId.values()].sort((a,b)=>a.layerOrder*100+a.order - (b.layerOrder*100+b.order));
-    step = all.find(s => s.status === "error") || all.findLast?.(s => s.status === "running") || all[all.length-1];
-    state.selectedStepId = step?.id ?? null;
-  }
   if (!step) { el.innerHTML = `<div class="empty">No steps yet.</div>`; return; }
 
   // Pipe-level view: render details of a specific pipe sub-step.
@@ -1184,6 +1287,117 @@ function renderDetail(run) {
     body += `<div style="font-family: var(--mono); font-size: 12px; line-height: 1.8; color: var(--text); margin-top: 8px;">${lines}</div>`;
   }
   el.innerHTML = body;
+}
+
+function renderRunOverview(run) {
+  const layerArr = [...run.layers.values()].sort((a,b)=>a.order-b.order);
+  const totalSteps = layerArr.reduce((n, l) => n + l.steps.size, 0);
+  const totalPipes = layerArr.reduce(
+    (n, l) => n + [...l.steps.values()].reduce((m, s) => m + (s.pipes?.size || 0), 0), 0,
+  );
+  const layerSummary = layerArr.map(l =>
+    `<div class="flow-box ${l.status}" data-layer-order="${l.order}" style="cursor:pointer; min-width: 130px;">
+       <div class="flow-box-head">
+         <span class="dot ${l.status}"></span>
+         <span>${escapeHtml(capitalize(l.name))}</span>
+       </div>
+       <div class="flow-box-meta">${l.steps.size} step${l.steps.size === 1 ? "" : "s"}</div>
+     </div>`,
+  ).join("");
+  const status = run.meta.status;
+
+  return `
+    <div class="detail-grid">
+      <div><div class="label">Pipeline</div><div class="value">${escapeHtml(run.meta.pipeline || "—")}</div></div>
+      <div><div class="label">Result</div><div class="value"><span class="pill ${status}">${(status||"pending").toUpperCase()}</span></div></div>
+      <div><div class="label">Duration</div><div class="value">${fmtDuration(run.meta.durationMs)}</div></div>
+      <div><div class="label">Steps · pipes</div><div class="value">${totalSteps} · ${totalPipes}</div></div>
+    </div>
+    <h3 style="font-size: 11px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin-bottom: 10px;">Layers</h3>
+    <div class="flow">${layerSummary}</div>
+    ${renderWaterfall(run)}
+  `;
+}
+
+function renderWaterfall(run) {
+  // Flatten all step + pipe intervals into rows; compute t0/tEnd in ms.
+  const rows = [];
+  let t0 = Infinity, tEnd = -Infinity;
+
+  const layerArr = [...run.layers.values()].sort((a,b)=>a.order-b.order);
+  for (const layer of layerArr) {
+    const steps = [...layer.steps.values()].sort((a,b)=>a.order-b.order);
+    for (const step of steps) {
+      const start = step.startTs ? Date.parse(step.startTs) : null;
+      const end = step.endTs ? Date.parse(step.endTs) : (step.status === "running" ? Date.now() : null);
+      if (start != null) { t0 = Math.min(t0, start); }
+      if (end != null) { tEnd = Math.max(tEnd, end); }
+      rows.push({ kind: "step", layer: layer.name, step, start, end });
+      const pipes = step.pipes ? [...step.pipes.values()].sort((a,b)=>a.order-b.order) : [];
+      for (const pipe of pipes) {
+        const pstart = pipe.startTs ? Date.parse(pipe.startTs) : null;
+        const pend = pipe.endTs ? Date.parse(pipe.endTs) : (pipe.status === "running" ? Date.now() : null);
+        if (pstart != null) { t0 = Math.min(t0, pstart); }
+        if (pend != null) { tEnd = Math.max(tEnd, pend); }
+        rows.push({ kind: "pipe", layer: layer.name, parent: step, pipe, start: pstart, end: pend });
+      }
+    }
+  }
+
+  if (!rows.length || !isFinite(t0) || !isFinite(tEnd) || tEnd <= t0) {
+    return `<div class="waterfall"><div class="waterfall-head"><h3>Timing waterfall</h3></div><div class="empty" style="padding: 20px 0;">No timing data yet.</div></div>`;
+  }
+
+  const totalMs = tEnd - t0;
+  const ticks = niceTicks(totalMs, 5);
+
+  const rowsHtml = rows.map(r => {
+    const start = r.start ?? t0;
+    const end = r.end ?? tEnd;
+    const leftPct = ((start - t0) / totalMs) * 100;
+    const widthPct = Math.max(((end - start) / totalMs) * 100, 0.4);
+    const status = (r.kind === "step" ? r.step.status : r.pipe.status) || "pending";
+    const label = r.kind === "step" ? r.step.name : r.pipe.name;
+    const dur = (r.kind === "step" ? r.step.durationMs : r.pipe.durationMs);
+    const id = r.kind === "step" ? r.step.id : r.pipe.id;
+    const parentId = r.kind === "pipe" ? r.parent.id : "";
+    const tag = r.kind === "step" ? r.layer : "";
+    const attrs = r.kind === "step"
+      ? `data-step-id="${escapeHtml(id)}"`
+      : `data-pipe-id="${escapeHtml(id)}" data-step-id="${escapeHtml(parentId)}"`;
+    return `
+      <div class="wf-row ${r.kind}" ${attrs} title="${escapeHtml(label)}${dur != null ? ` · ${fmtDuration(dur)}` : ""}">
+        <div class="wf-label">
+          ${tag ? `<span class="layer-tag">${escapeHtml(tag)}</span>` : ""}
+          <span>${escapeHtml(label)}</span>
+        </div>
+        <div class="wf-track">
+          <div class="wf-bar ${r.kind} ${status}" style="left: ${leftPct.toFixed(2)}%; width: ${widthPct.toFixed(2)}%;"></div>
+        </div>
+        <div class="wf-dur">${dur != null ? fmtDuration(dur) : "—"}</div>
+      </div>`;
+  }).join("");
+
+  const tickLabels = ticks.map(t => fmtDuration(Math.round(t))).join("</span><span>");
+
+  return `
+    <div class="waterfall">
+      <div class="waterfall-head">
+        <h3>Timing waterfall</h3>
+        <span class="total">total · ${fmtDuration(Math.round(totalMs))}</span>
+      </div>
+      <div class="wf-rows">${rowsHtml}</div>
+      <div class="wf-axis">
+        <div></div>
+        <div class="wf-axis-ticks"><span>${tickLabels}</span></div>
+        <div></div>
+      </div>
+    </div>`;
+}
+
+function niceTicks(maxMs, count) {
+  const step = maxMs / (count - 1);
+  return Array.from({length: count}, (_, i) => step * i);
 }
 
 function renderTransformFlow(step) {
@@ -1362,7 +1576,8 @@ function renderExecPicker() {
   }
 }
 
-// Detail-pane click delegate: path links + flow-box step selection.
+// Detail-pane click delegate: path links + flow-box step selection +
+// waterfall row drill-down + layer-summary boxes in the overview.
 document.getElementById("detail").addEventListener("click", (e) => {
   const a = e.target.closest("a.path-link");
   if (a) {
@@ -1372,6 +1587,27 @@ document.getElementById("detail").addEventListener("click", (e) => {
     fetch(`/open?path=${encodeURIComponent(p)}`, { method: "GET" })
       .then(r => { if (!r.ok) console.warn("open failed:", r.status, r.statusText); })
       .catch(err => console.warn("open failed:", err));
+    return;
+  }
+  // Waterfall row drill-down — takes precedence over generic flow-box clicks
+  // because wf-row elements have data-step-id / data-pipe-id too.
+  const wfRow = e.target.closest(".wf-row[data-step-id], .wf-row[data-pipe-id]");
+  if (wfRow) {
+    state.selectedStepId = wfRow.dataset.stepId;
+    state.selectedPipeId = wfRow.dataset.pipeId || null;
+    state.selectedLayerOrder = null;
+    renderRail(state.run);
+    renderDetail(state.run);
+    return;
+  }
+  // Layer-summary boxes in the run overview.
+  const lbox = e.target.closest(".flow-box[data-layer-order]");
+  if (lbox) {
+    state.selectedLayerOrder = parseInt(lbox.dataset.layerOrder, 10);
+    state.selectedStepId = null;
+    state.selectedPipeId = null;
+    renderRail(state.run);
+    renderDetail(state.run);
     return;
   }
   const pbox = e.target.closest(".flow-box[data-pipe-id], .flow-pipe[data-pipe-id]");
@@ -1391,6 +1627,14 @@ document.getElementById("detail").addEventListener("click", (e) => {
     renderRail(state.run);
     renderDetail(state.run);
   }
+});
+
+document.getElementById("overview-btn").addEventListener("click", () => {
+  state.selectedStepId = null;
+  state.selectedPipeId = null;
+  state.selectedLayerOrder = null;
+  renderRail(state.run);
+  renderDetail(state.run);
 });
 
 document.getElementById("exec-picker").addEventListener("change", (e) => {
