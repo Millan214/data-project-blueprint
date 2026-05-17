@@ -1009,6 +1009,10 @@ const state = {
   lastStatusByExecId: new Map(),
   notificationsEnabled: false,
   initialIndexLoad: true,
+  // Cache of loaded parquet samples, keyed by step_id. Lets us re-apply the
+  // sample after pollRun re-renders the detail pane every 2s, so the table
+  // doesn't flash and disappear.
+  loadedSamples: new Map(),
   run: null,          // { meta, layers: Map<order, layerObj>, byStepId: Map }
   usage: [],          // array of usage samples for the selected execution
 };
@@ -1417,6 +1421,9 @@ function renderDetail(run) {
       </div>`;
   }
   el.innerHTML = body;
+  // If the user had a sample loaded for this step before pollRun re-rendered,
+  // re-apply it so the table doesn't visibly flicker / disappear.
+  restoreCachedSample();
 }
 
 // ---------- inline parquet sample renderer ----------
@@ -1428,16 +1435,37 @@ async function loadParquetSample(path, key, clickedBtn) {
   if (clickedBtn) clickedBtn.classList.add("active");
   statusEl.textContent = `Loading ${key}…`;
   targetEl.innerHTML = "";
+  const stepId = state.selectedStepId;
   try {
     const res = await fetch(`/parquet?path=${encodeURIComponent(path)}&limit=50`, { cache: "no-store" });
     if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
     const data = await res.json();
-    statusEl.textContent = `${data.total.toLocaleString()} rows total · showing ${data.rows.length} · ${data.columns.length} columns`;
-    targetEl.innerHTML = renderParquetTable(data);
+    // Cache so the table survives the next pollRun re-render of the detail pane.
+    if (stepId) state.loadedSamples.set(stepId, { key, path, data });
+    paintSample(data, key);
   } catch (err) {
     statusEl.textContent = "";
     targetEl.innerHTML = `<div class="empty" style="padding: 20px 0;">Failed to load: ${escapeHtml(err.message)}</div>`;
   }
+}
+
+function paintSample(data, key) {
+  const targetEl = document.getElementById("sample-target");
+  const statusEl = document.getElementById("sample-status");
+  if (!targetEl || !statusEl) return;
+  document.querySelectorAll(".sample-btn").forEach(b =>
+    b.classList.toggle("active", b.dataset.sampleKey === key),
+  );
+  statusEl.textContent = `${data.total.toLocaleString()} rows total · showing ${data.rows.length} · ${data.columns.length} columns`;
+  targetEl.innerHTML = renderParquetTable(data);
+}
+
+// Called from renderDetail after the step view is rebuilt — re-applies any
+// previously-loaded sample so a 2s pollRun re-render doesn't wipe the table.
+function restoreCachedSample() {
+  if (!state.selectedStepId) return;
+  const cached = state.loadedSamples.get(state.selectedStepId);
+  if (cached) paintSample(cached.data, cached.key);
 }
 
 function renderParquetTable(data) {
@@ -1914,6 +1942,7 @@ document.getElementById("exec-picker").addEventListener("change", (e) => {
     state.selectedStepId = null;
     state.selectedPipeId = null;
     state.animatedLayers = new Set();
+    state.loadedSamples = new Map();
     state.run = null;
     pollRun();
   }
@@ -1955,6 +1984,7 @@ async function pollIndex() {
       state.selectedStepId = null;
       state.selectedPipeId = null;
       state.animatedLayers = new Set();
+      state.loadedSamples = new Map();
       state.run = null;
       pollRun();
     } else if (state.run) {
