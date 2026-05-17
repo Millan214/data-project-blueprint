@@ -257,18 +257,34 @@ class _UsageSampler:
         self._stop.set()
         self._thread.join(timeout=2.0)
 
+    def flush_final(self) -> None:
+        """Emit one last sample after the sampling thread has stopped.
+
+        Called from `_close` so every run ends with a "high-water-mark"
+        snapshot even if the pipeline finished before the next scheduled
+        sample. Safe to call after `stop()`; no race with the worker thread.
+        """
+        try:
+            self._emit_sample()
+        except Exception:
+            pass
+
     def _run(self) -> None:
-        # Wait one tick before the first sample so cpu_percent has data to diff.
-        if self._stop.wait(self._interval):
-            return
+        # Emit a sample immediately so even sub-second runs end up with data.
+        # CPU% here will be near-zero (only microseconds since priming), but the
+        # memory / disk numbers are meaningful from the very first tick.
+        try:
+            self._emit_sample()
+        except Exception:
+            pass
         while not self._stop.is_set():
+            if self._stop.wait(self._interval):
+                break
             try:
                 self._emit_sample()
             except Exception:
                 # Sampler must never crash the pipeline — swallow and keep going.
                 pass
-            if self._stop.wait(self._interval):
-                break
 
     def _emit_sample(self) -> None:
         cpu_proc = self._proc.cpu_percent(interval=None)
@@ -645,9 +661,12 @@ class PipelineLogger:
         with self._lock:
             if self._fh is None:
                 return
-            # Stop sampling before we close the usage file handle.
+            # Stop sampling before we close the usage file handle. After the
+            # worker thread has joined, capture one final sample so every run
+            # always has at least one start + one end data point.
             if self._sampler is not None:
                 self._sampler.stop()
+                self._sampler.flush_final()
                 self._sampler = None
             duration_ms = int((time.monotonic() - (self._t_started or 0)) * 1000)
             finished_at = _now_iso()
