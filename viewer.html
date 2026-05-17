@@ -88,8 +88,27 @@
     border: 1px solid var(--border);
     border-radius: 6px;
     padding: 6px 8px;
-    margin-bottom: 16px;
+    margin-bottom: 8px;
     font: inherit;
+  }
+  .overview-btn {
+    width: 100%;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    padding: 7px 10px;
+    margin-bottom: 14px;
+    font: inherit; font-size: 11px; font-weight: 500;
+    text-align: left;
+    cursor: pointer;
+    display: flex; align-items: center; gap: 8px;
+    transition: background 0.1s, border-color 0.1s;
+  }
+  .overview-btn:hover { background: var(--panel-2); border-color: var(--muted); }
+  .overview-btn.active { border-color: var(--orange); color: var(--orange); }
+  .overview-btn .ico {
+    font-size: 13px;
   }
 
   .layer {
@@ -409,6 +428,173 @@
     text-align: center;
   }
 
+  /* Schema-drift section in the run overview. */
+  .drift-section { margin-top: 22px; }
+  .drift-heading {
+    display: flex; align-items: baseline; gap: 10px;
+    font-size: 11px; font-weight: 600; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--muted);
+    margin-bottom: 10px;
+  }
+  .drift-heading .vs { color: var(--muted); font-weight: 400; letter-spacing: 0.04em; text-transform: none; }
+  .drift-card {
+    background: var(--panel); border: 1px solid var(--border);
+    border-left: 3px solid var(--orange);
+    border-radius: 6px;
+    padding: 10px 14px; margin-bottom: 8px;
+  }
+  .drift-card.new { border-left-color: var(--green); }
+  .drift-card.error { border-left-color: var(--red); }
+  .drift-card-head {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 12px; font-weight: 500; margin-bottom: 6px;
+  }
+  .drift-card-head .label { font-weight: 600; }
+  .drift-card-head .tag {
+    font-size: 9px; padding: 1px 6px; border-radius: 3px; letter-spacing: 0.06em;
+    text-transform: uppercase; font-weight: 700;
+    background: rgba(210,153,34,0.15); color: var(--orange);
+  }
+  .drift-card-head .tag.new { background: rgba(63,185,80,0.15); color: var(--green); }
+  .drift-changes {
+    font-size: 11px; color: var(--text); font-family: var(--mono);
+    line-height: 1.7;
+  }
+  .drift-changes .add { color: var(--green); }
+  .drift-changes .rem { color: var(--red); }
+  .drift-changes .chg { color: var(--orange); }
+  .drift-changes .key { color: var(--muted); }
+  .drift-badge {
+    font-size: 8px; letter-spacing: 0.08em; text-transform: uppercase;
+    padding: 1px 5px; border-radius: 3px; font-weight: 700;
+    background: rgba(210,153,34,0.15); color: var(--orange);
+  }
+
+  /* Sample / quarantine viewer — inline parquet table loaded via /parquet. */
+  .sample-section { margin-top: 22px; }
+  .sample-heading {
+    font-size: 11px; font-weight: 600; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--muted);
+    margin-bottom: 10px;
+  }
+  .sample-toolbar {
+    display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px;
+  }
+  .sample-btn {
+    background: var(--panel); border: 1px solid var(--border); color: var(--text);
+    padding: 5px 10px; font: inherit; font-size: 11px; border-radius: 5px;
+    cursor: pointer;
+    display: inline-flex; align-items: center; gap: 6px;
+    transition: background 0.1s, border-color 0.1s;
+  }
+  .sample-btn:hover { background: var(--panel-2); border-color: var(--muted); }
+  .sample-btn.quarantine { border-left: 3px solid var(--red); }
+  .sample-btn.active { background: var(--panel-2); border-color: var(--orange); }
+  .sample-btn .icon { color: var(--muted); }
+  .sample-status {
+    font-size: 10px; color: var(--muted); font-family: var(--mono);
+    text-transform: uppercase; letter-spacing: 0.08em;
+    margin-bottom: 6px;
+  }
+  .sample-table-wrap {
+    overflow: auto; max-height: 320px;
+    border: 1px solid var(--border); border-radius: 6px;
+    background: var(--panel);
+  }
+  table.sample-table {
+    width: 100%; border-collapse: collapse; font-size: 11px;
+  }
+  table.sample-table th, table.sample-table td {
+    padding: 6px 10px; text-align: left;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap; font-family: var(--mono);
+  }
+  table.sample-table thead th {
+    position: sticky; top: 0; background: var(--panel-2); color: var(--muted);
+    font-size: 9px; text-transform: uppercase; letter-spacing: 0.08em;
+    font-weight: 600; z-index: 1;
+  }
+  table.sample-table tbody tr:hover { background: var(--panel-2); }
+  table.sample-table td .nullv { color: var(--muted); font-style: italic; }
+  table.sample-table td code {
+    font-size: 10px; padding: 1px 4px; background: var(--bg);
+    border-radius: 3px; color: var(--text);
+  }
+
+  /* Waterfall — Gantt-style timeline of step+pipe intervals for a run. */
+  .waterfall {
+    margin-top: 14px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+  }
+  .waterfall-head {
+    display: flex; justify-content: space-between; align-items: baseline;
+    margin-bottom: 12px; gap: 12px;
+  }
+  .waterfall-head h3 {
+    font-size: 11px; font-weight: 600; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--muted);
+  }
+  .waterfall-head .total {
+    font-size: 11px; color: var(--muted); font-family: var(--mono);
+  }
+  .wf-row {
+    display: grid;
+    grid-template-columns: 200px 1fr 80px;
+    align-items: center;
+    gap: 10px;
+    padding: 3px 0;
+    cursor: pointer;
+    border-radius: 4px;
+  }
+  .wf-row:hover { background: var(--panel-2); }
+  .wf-row.pipe { padding-left: 18px; }
+  .wf-row.pipe .wf-label { font-size: 11px; color: var(--muted); }
+  .wf-label {
+    font-size: 12px; color: var(--text);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .wf-label .layer-tag {
+    font-size: 8px; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--muted); flex-shrink: 0;
+  }
+  .wf-track {
+    position: relative;
+    height: 18px;
+    background: rgba(255,255,255,0.02);
+    border-radius: 3px;
+  }
+  .wf-bar {
+    position: absolute; top: 2px; bottom: 2px;
+    border-radius: 3px;
+    background: var(--gray);
+    transition: opacity 0.1s;
+    min-width: 2px;
+  }
+  .wf-bar.success { background: var(--green); }
+  .wf-bar.error { background: var(--red); }
+  .wf-bar.running { background: var(--orange); animation: pulse 1.2s ease-in-out infinite; }
+  .wf-bar.pipe { top: 4px; bottom: 4px; opacity: 0.7; }
+  .wf-row:hover .wf-bar { opacity: 1; }
+  .wf-dur {
+    font-size: 11px; font-family: var(--mono); color: var(--muted);
+    text-align: right;
+  }
+  .wf-axis {
+    display: grid;
+    grid-template-columns: 200px 1fr 80px;
+    gap: 10px;
+    font-size: 10px; color: var(--muted); font-family: var(--mono);
+    padding-top: 6px; margin-top: 8px;
+    border-top: 1px solid var(--border);
+  }
+  .wf-axis-ticks {
+    display: flex; justify-content: space-between;
+  }
+
   ::-webkit-scrollbar { width: 8px; height: 8px; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
@@ -642,6 +828,11 @@
   .seg[data-fsz="sm"] { font-size: 10px; }
   .seg[data-fsz="md"] { font-size: 12px; }
   .seg[data-fsz="lg"] { font-size: 14px; }
+  .config-hint {
+    font-size: 9px; color: var(--muted); font-style: italic;
+    margin-top: 4px; min-height: 11px;
+  }
+  .config-hint.warn { color: var(--orange); font-style: normal; }
 
   /* Font-size scaling via CSS `zoom` (cleanest cross-element scaler). */
   body.fsz-sm { zoom: 0.9; }
@@ -694,6 +885,7 @@
 
 <aside class="rail">
   <select class="exec-picker" id="exec-picker"></select>
+  <button class="overview-btn" id="overview-btn"><span class="ico">▤</span><span>Run overview</span></button>
   <div class="timeline" id="layers"></div>
 </aside>
 
@@ -786,6 +978,14 @@
           <button class="seg" data-smooth="on">Smooth</button>
         </div>
       </div>
+      <div class="config-row">
+        <span class="config-label">Notifications</span>
+        <div class="seg-group">
+          <button class="seg" data-notify="off">Off</button>
+          <button class="seg" data-notify="on">On</button>
+        </div>
+        <span class="config-hint" id="notify-hint"></span>
+      </div>
     </div>
   </div>
 </aside>
@@ -804,6 +1004,15 @@ const state = {
   collapsedLayers: new Set(),
   collapsedSteps: new Set(),
   animatedLayers: new Set(),
+  // Map<execution_id, status> from the previous index poll — used to detect
+  // run completions for browser notifications.
+  lastStatusByExecId: new Map(),
+  notificationsEnabled: false,
+  initialIndexLoad: true,
+  // Cache of loaded parquet samples, keyed by step_id. Lets us re-apply the
+  // sample after pollRun re-renders the detail pane every 2s, so the table
+  // doesn't flash and disappear.
+  loadedSamples: new Map(),
   run: null,          // { meta, layers: Map<order, layerObj>, byStepId: Map }
   usage: [],          // array of usage samples for the selected execution
 };
@@ -865,9 +1074,11 @@ function buildRunModel(events) {
       if (ev.description != null) step.description = ev.description;
       if (ev.event === "step_started") {
         step.status = "running";
+        step.startTs = ev.ts;
         if (ev.rows_in != null) step.rowsIn = ev.rows_in;
       } else {
         step.status = ev.status || "success";
+        step.endTs = ev.ts;
         step.durationMs = ev.duration_ms ?? null;
         if (ev.rows_in != null) step.rowsIn = ev.rows_in;
         if (ev.rows_out != null) step.rowsOut = ev.rows_out;
@@ -912,9 +1123,11 @@ function buildRunModel(events) {
       if (ev.description != null) pipe.description = ev.description;
       if (ev.event === "pipe_started") {
         pipe.status = "running";
+        pipe.startTs = ev.ts;
         if (ev.rows_in != null) pipe.rowsIn = ev.rows_in;
       } else {
         pipe.status = ev.status || "success";
+        pipe.endTs = ev.ts;
         pipe.durationMs = ev.duration_ms ?? null;
         if (ev.rows_in != null) pipe.rowsIn = ev.rows_in;
         if (ev.rows_out != null) pipe.rowsOut = ev.rows_out;
@@ -987,6 +1200,11 @@ function renderHeader(run) {
 function renderRail(run) {
   const root = document.getElementById("layers");
   root.innerHTML = "";
+  const overviewBtn = document.getElementById("overview-btn");
+  if (overviewBtn) {
+    overviewBtn.classList.toggle("active",
+      state.selectedStepId == null && state.selectedLayerOrder == null);
+  }
   if (!run) return;
   const layerArr = [...run.layers.values()].sort((a,b)=>a.order-b.order);
   for (const layer of layerArr) {
@@ -1097,6 +1315,12 @@ function renderDetail(run) {
   const el = document.getElementById("detail");
   if (!run) { el.innerHTML = `<div class="empty">No execution selected.</div>`; return; }
 
+  // Default view (no specific selection) — show the Run overview with waterfall.
+  if (state.selectedStepId == null && state.selectedLayerOrder == null) {
+    el.innerHTML = renderRunOverview(run);
+    return;
+  }
+
   // Layer-level view: render flow diagram of steps.
   if (state.selectedStepId == null && state.selectedLayerOrder != null) {
     const layer = run.layers.get(state.selectedLayerOrder);
@@ -1104,12 +1328,6 @@ function renderDetail(run) {
   }
 
   let step = state.selectedStepId ? run.byStepId.get(state.selectedStepId) : null;
-  if (!step) {
-    // default selection: first errored, else last running, else last success
-    const all = [...run.byStepId.values()].sort((a,b)=>a.layerOrder*100+a.order - (b.layerOrder*100+b.order));
-    step = all.find(s => s.status === "error") || all.findLast?.(s => s.status === "running") || all[all.length-1];
-    state.selectedStepId = step?.id ?? null;
-  }
   if (!step) { el.innerHTML = `<div class="empty">No steps yet.</div>`; return; }
 
   // Pipe-level view: render details of a specific pipe sub-step.
@@ -1183,7 +1401,321 @@ function renderDetail(run) {
       `<div><span style="color:var(--muted)">${escapeHtml(prettyKey(k))}:</span> ${formatValHtml(v)}</div>`).join("");
     body += `<div style="font-family: var(--mono); font-size: 12px; line-height: 1.8; color: var(--text); margin-top: 8px;">${lines}</div>`;
   }
+  // Sample-rows section: any path-like extra (quarantine partition, silver/
+  // gold output, etc.) gets a button to load + render an inline parquet table.
+  const samplePaths = Object.entries(step.extra)
+    .filter(([k, v]) => typeof v === "string" && pathToUrl(v));
+  if (samplePaths.length) {
+    const buttons = samplePaths.map(([k, v]) => {
+      const isQ = k.toLowerCase().includes("quarantine");
+      return `<button class="sample-btn ${isQ ? "quarantine" : ""}" data-sample-path="${escapeHtml(v)}" data-sample-key="${escapeHtml(k)}">
+        <span class="icon">▦</span><span>${isQ ? "Sample quarantine" : "Sample " + escapeHtml(prettyKey(k))}</span>
+      </button>`;
+    }).join("");
+    body += `
+      <div class="sample-section">
+        <div class="sample-heading">Sample rows</div>
+        <div class="sample-toolbar">${buttons}</div>
+        <div class="sample-status" id="sample-status"></div>
+        <div id="sample-target"></div>
+      </div>`;
+  }
+  // Capture the sample table's scroll position BEFORE wiping the DOM so
+  // we can restore it after the rebuild — otherwise the table snaps back
+  // to left:0 on every pollRun re-render and the user can't scroll right.
+  const sampleScroll = captureSampleScroll();
   el.innerHTML = body;
+  restoreCachedSample(sampleScroll);
+}
+
+// ---------- inline parquet sample renderer ----------
+async function loadParquetSample(path, key, clickedBtn) {
+  const targetEl = document.getElementById("sample-target");
+  const statusEl = document.getElementById("sample-status");
+  if (!targetEl) return;
+  document.querySelectorAll(".sample-btn").forEach(b => b.classList.remove("active"));
+  if (clickedBtn) clickedBtn.classList.add("active");
+  statusEl.textContent = `Loading ${key}…`;
+  targetEl.innerHTML = "";
+  const stepId = state.selectedStepId;
+  try {
+    const res = await fetch(`/parquet?path=${encodeURIComponent(path)}&limit=50`, { cache: "no-store" });
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    const data = await res.json();
+    // Cache so the table survives the next pollRun re-render of the detail pane.
+    if (stepId) state.loadedSamples.set(stepId, { key, path, data });
+    paintSample(data, key);
+  } catch (err) {
+    statusEl.textContent = "";
+    targetEl.innerHTML = `<div class="empty" style="padding: 20px 0;">Failed to load: ${escapeHtml(err.message)}</div>`;
+  }
+}
+
+function paintSample(data, key) {
+  const targetEl = document.getElementById("sample-target");
+  const statusEl = document.getElementById("sample-status");
+  if (!targetEl || !statusEl) return;
+  document.querySelectorAll(".sample-btn").forEach(b =>
+    b.classList.toggle("active", b.dataset.sampleKey === key),
+  );
+  statusEl.textContent = `${data.total.toLocaleString()} rows total · showing ${data.rows.length} · ${data.columns.length} columns`;
+  targetEl.innerHTML = renderParquetTable(data);
+}
+
+// Helpers to preserve the sample table's scroll position across re-renders.
+function captureSampleScroll() {
+  const wrap = document.querySelector(".sample-table-wrap");
+  if (!wrap) return null;
+  return { left: wrap.scrollLeft, top: wrap.scrollTop };
+}
+function applySampleScroll(pos) {
+  if (!pos) return;
+  const wrap = document.querySelector(".sample-table-wrap");
+  if (!wrap) return;
+  wrap.scrollLeft = pos.left;
+  wrap.scrollTop = pos.top;
+}
+
+// Called from renderDetail after the step view is rebuilt — re-applies any
+// previously-loaded sample so a 2s pollRun re-render doesn't wipe the table.
+// `scrollPos` is captured from the previous DOM before the rebuild so the
+// user's horizontal/vertical scroll position is preserved.
+function restoreCachedSample(scrollPos) {
+  if (!state.selectedStepId) return;
+  const cached = state.loadedSamples.get(state.selectedStepId);
+  if (!cached) return;
+  paintSample(cached.data, cached.key);
+  applySampleScroll(scrollPos);
+}
+
+function renderParquetTable(data) {
+  const cols = data.columns || [];
+  const rows = data.rows || [];
+  if (!cols.length) return `<div class="empty" style="padding: 20px 0;">No columns.</div>`;
+  const header = cols.map(c => `<th title="${escapeHtml(data.dtypes?.[c] || "")}">${escapeHtml(c)}</th>`).join("");
+  const body = rows.map(r =>
+    `<tr>${cols.map(c => `<td>${formatSampleCell(r[c])}</td>`).join("")}</tr>`,
+  ).join("");
+  return `<div class="sample-table-wrap">
+    <table class="sample-table">
+      <thead><tr>${header}</tr></thead>
+      <tbody>${body}</tbody>
+    </table>
+  </div>`;
+}
+
+function formatSampleCell(v) {
+  if (v == null) return '<span class="nullv">null</span>';
+  if (typeof v === "object") {
+    const s = JSON.stringify(v);
+    return `<code>${escapeHtml(s.length > 140 ? s.slice(0, 137) + "…" : s)}</code>`;
+  }
+  const s = String(v);
+  return escapeHtml(s.length > 140 ? s.slice(0, 137) + "…" : s);
+}
+
+function renderRunOverview(run) {
+  const layerArr = [...run.layers.values()].sort((a,b)=>a.order-b.order);
+  const totalSteps = layerArr.reduce((n, l) => n + l.steps.size, 0);
+  const totalPipes = layerArr.reduce(
+    (n, l) => n + [...l.steps.values()].reduce((m, s) => m + (s.pipes?.size || 0), 0), 0,
+  );
+  const drift = computeSchemaDrift();
+  const driftedLabels = new Set(Object.entries(drift).filter(([, d]) => d.changed).map(([k]) => k));
+  const layerSummary = layerArr.map(l => {
+    const driftBadge = driftedLabels.has(l.name) ? `<span class="drift-badge">drift</span>` : "";
+    return `<div class="flow-box ${l.status}" data-layer-order="${l.order}" style="cursor:pointer; min-width: 130px;">
+       <div class="flow-box-head">
+         <span class="dot ${l.status}"></span>
+         <span>${escapeHtml(capitalize(l.name))}</span>
+         ${driftBadge}
+       </div>
+       <div class="flow-box-meta">${l.steps.size} step${l.steps.size === 1 ? "" : "s"}</div>
+     </div>`;
+  }).join("");
+  const status = run.meta.status;
+
+  return `
+    <div class="detail-grid">
+      <div><div class="label">Pipeline</div><div class="value">${escapeHtml(run.meta.pipeline || "—")}</div></div>
+      <div><div class="label">Result</div><div class="value"><span class="pill ${status}">${(status||"pending").toUpperCase()}</span></div></div>
+      <div><div class="label">Duration</div><div class="value">${fmtDuration(run.meta.durationMs)}</div></div>
+      <div><div class="label">Steps · pipes</div><div class="value">${totalSteps} · ${totalPipes}</div></div>
+    </div>
+    <h3 style="font-size: 11px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin-bottom: 10px;">Layers</h3>
+    <div class="flow">${layerSummary}</div>
+    ${renderSchemaDrift(drift)}
+    ${renderWaterfall(run)}
+  `;
+}
+
+// Compare the currently-selected run's schema snapshots against the most
+// recent earlier run that has a snapshot for the same label. Returns a map
+// keyed by label with `{ changed, isNew, added, removed, dtypeChanged,
+// rowsCurrent, rowsPrev, prevId }`.
+function computeSchemaDrift() {
+  const cur = state.executions.find(e => e.id === state.selectedExecId);
+  const result = {};
+  if (!cur || !cur.schemas) return result;
+  // Earlier runs in id order (most recent first).
+  const earlier = state.executions
+    .filter(e => e.id < cur.id && e.schemas)
+    .sort((a, b) => b.id - a.id);
+  for (const [label, snap] of Object.entries(cur.schemas)) {
+    const prev = earlier.find(e => e.schemas && e.schemas[label]);
+    if (!prev) {
+      result[label] = { changed: true, isNew: true };
+      continue;
+    }
+    const p = prev.schemas[label];
+    const curCols = new Set(snap.columns || []);
+    const prevCols = new Set(p.columns || []);
+    const added = [...curCols].filter(c => !prevCols.has(c));
+    const removed = [...prevCols].filter(c => !curCols.has(c));
+    const dtypeChanged = [];
+    for (const c of curCols) {
+      if (prevCols.has(c) && snap.dtypes?.[c] !== p.dtypes?.[c]) {
+        dtypeChanged.push({ column: c, from: p.dtypes?.[c], to: snap.dtypes?.[c] });
+      }
+    }
+    const changed = added.length || removed.length || dtypeChanged.length;
+    result[label] = {
+      changed: !!changed,
+      isNew: false,
+      added, removed, dtypeChanged,
+      rowsCurrent: snap.row_count, rowsPrev: p.row_count,
+      prevId: prev.id,
+    };
+  }
+  return result;
+}
+
+function renderSchemaDrift(drift) {
+  const labels = Object.keys(drift).filter(l => drift[l].changed);
+  if (!labels.length) return "";
+  const cards = labels.map(label => {
+    const d = drift[label];
+    if (d.isNew) {
+      return `<div class="drift-card new">
+        <div class="drift-card-head">
+          <span class="label">${escapeHtml(capitalize(label))}</span>
+          <span class="tag new">new snapshot</span>
+        </div>
+        <div class="drift-changes">No previous snapshot for this label — first run to record it.</div>
+      </div>`;
+    }
+    const parts = [];
+    if (d.added.length) {
+      parts.push(`<div><span class="key">+ added:</span> <span class="add">${d.added.map(escapeHtml).join(", ")}</span></div>`);
+    }
+    if (d.removed.length) {
+      parts.push(`<div><span class="key">− removed:</span> <span class="rem">${d.removed.map(escapeHtml).join(", ")}</span></div>`);
+    }
+    if (d.dtypeChanged.length) {
+      parts.push(`<div><span class="key">~ dtypes:</span> <span class="chg">${
+        d.dtypeChanged.map(x => `${escapeHtml(x.column)} (${escapeHtml(x.from)} → ${escapeHtml(x.to)})`).join("; ")
+      }</span></div>`);
+    }
+    return `<div class="drift-card">
+      <div class="drift-card-head">
+        <span class="label">${escapeHtml(capitalize(label))}</span>
+        <span class="tag">schema drift</span>
+        <span class="key" style="margin-left: auto; font-size: 10px;">vs run #${d.prevId}</span>
+      </div>
+      <div class="drift-changes">${parts.join("")}</div>
+    </div>`;
+  }).join("");
+  return `
+    <div class="drift-section">
+      <div class="drift-heading">Schema drift <span class="vs">— vs previous runs</span></div>
+      ${cards}
+    </div>`;
+}
+
+function renderWaterfall(run) {
+  // Flatten all step + pipe intervals into rows; compute t0/tEnd in ms.
+  const rows = [];
+  let t0 = Infinity, tEnd = -Infinity;
+
+  const layerArr = [...run.layers.values()].sort((a,b)=>a.order-b.order);
+  for (const layer of layerArr) {
+    const steps = [...layer.steps.values()].sort((a,b)=>a.order-b.order);
+    for (const step of steps) {
+      const start = step.startTs ? Date.parse(step.startTs) : null;
+      const end = step.endTs ? Date.parse(step.endTs) : (step.status === "running" ? Date.now() : null);
+      if (start != null) { t0 = Math.min(t0, start); }
+      if (end != null) { tEnd = Math.max(tEnd, end); }
+      rows.push({ kind: "step", layer: layer.name, step, start, end });
+      const pipes = step.pipes ? [...step.pipes.values()].sort((a,b)=>a.order-b.order) : [];
+      for (const pipe of pipes) {
+        const pstart = pipe.startTs ? Date.parse(pipe.startTs) : null;
+        const pend = pipe.endTs ? Date.parse(pipe.endTs) : (pipe.status === "running" ? Date.now() : null);
+        if (pstart != null) { t0 = Math.min(t0, pstart); }
+        if (pend != null) { tEnd = Math.max(tEnd, pend); }
+        rows.push({ kind: "pipe", layer: layer.name, parent: step, pipe, start: pstart, end: pend });
+      }
+    }
+  }
+
+  if (!rows.length || !isFinite(t0) || !isFinite(tEnd) || tEnd <= t0) {
+    return `<div class="waterfall"><div class="waterfall-head"><h3>Timing waterfall</h3></div><div class="empty" style="padding: 20px 0;">No timing data yet.</div></div>`;
+  }
+
+  const totalMs = tEnd - t0;
+  const ticks = niceTicks(totalMs, 5);
+
+  const rowsHtml = rows.map(r => {
+    const status = (r.kind === "step" ? r.step.status : r.pipe.status) || "pending";
+    const label = r.kind === "step" ? r.step.name : r.pipe.name;
+    const dur = (r.kind === "step" ? r.step.durationMs : r.pipe.durationMs);
+    const id = r.kind === "step" ? r.step.id : r.pipe.id;
+    const parentId = r.kind === "pipe" ? r.parent.id : "";
+    const tag = r.kind === "step" ? r.layer : "";
+    const attrs = r.kind === "step"
+      ? `data-step-id="${escapeHtml(id)}"`
+      : `data-pipe-id="${escapeHtml(id)}" data-step-id="${escapeHtml(parentId)}"`;
+    // No start timestamp yet → row is pending and there's nothing to position
+    // a bar against. Render an empty track instead of falling back to t0 (which
+    // would draw a full-width bar that visually "starts before" everything
+    // already on the timeline).
+    let barHtml = "";
+    if (r.start != null) {
+      const end = r.end ?? r.start;  // running with no end → just a marker until next poll
+      const leftPct = ((r.start - t0) / totalMs) * 100;
+      const widthPct = Math.max(((end - r.start) / totalMs) * 100, 0.4);
+      barHtml = `<div class="wf-bar ${r.kind} ${status}" style="left: ${leftPct.toFixed(2)}%; width: ${widthPct.toFixed(2)}%;"></div>`;
+    }
+    return `
+      <div class="wf-row ${r.kind}" ${attrs} title="${escapeHtml(label)}${dur != null ? ` · ${fmtDuration(dur)}` : ""}">
+        <div class="wf-label">
+          ${tag ? `<span class="layer-tag">${escapeHtml(tag)}</span>` : ""}
+          <span>${escapeHtml(label)}</span>
+        </div>
+        <div class="wf-track">${barHtml}</div>
+        <div class="wf-dur">${dur != null ? fmtDuration(dur) : "—"}</div>
+      </div>`;
+  }).join("");
+
+  const tickLabels = ticks.map(t => fmtDuration(Math.round(t))).join("</span><span>");
+
+  return `
+    <div class="waterfall">
+      <div class="waterfall-head">
+        <h3>Timing waterfall</h3>
+        <span class="total">total · ${fmtDuration(Math.round(totalMs))}</span>
+      </div>
+      <div class="wf-rows">${rowsHtml}</div>
+      <div class="wf-axis">
+        <div></div>
+        <div class="wf-axis-ticks"><span>${tickLabels}</span></div>
+        <div></div>
+      </div>
+    </div>`;
+}
+
+function niceTicks(maxMs, count) {
+  const step = maxMs / (count - 1);
+  return Array.from({length: count}, (_, i) => step * i);
 }
 
 function renderTransformFlow(step) {
@@ -1362,7 +1894,8 @@ function renderExecPicker() {
   }
 }
 
-// Detail-pane click delegate: path links + flow-box step selection.
+// Detail-pane click delegate: path links + flow-box step selection +
+// waterfall row drill-down + layer-summary boxes in the overview.
 document.getElementById("detail").addEventListener("click", (e) => {
   const a = e.target.closest("a.path-link");
   if (a) {
@@ -1372,6 +1905,32 @@ document.getElementById("detail").addEventListener("click", (e) => {
     fetch(`/open?path=${encodeURIComponent(p)}`, { method: "GET" })
       .then(r => { if (!r.ok) console.warn("open failed:", r.status, r.statusText); })
       .catch(err => console.warn("open failed:", err));
+    return;
+  }
+  const sbtn = e.target.closest(".sample-btn[data-sample-path]");
+  if (sbtn) {
+    loadParquetSample(sbtn.dataset.samplePath, sbtn.dataset.sampleKey, sbtn);
+    return;
+  }
+  // Waterfall row drill-down — takes precedence over generic flow-box clicks
+  // because wf-row elements have data-step-id / data-pipe-id too.
+  const wfRow = e.target.closest(".wf-row[data-step-id], .wf-row[data-pipe-id]");
+  if (wfRow) {
+    state.selectedStepId = wfRow.dataset.stepId;
+    state.selectedPipeId = wfRow.dataset.pipeId || null;
+    state.selectedLayerOrder = null;
+    renderRail(state.run);
+    renderDetail(state.run);
+    return;
+  }
+  // Layer-summary boxes in the run overview.
+  const lbox = e.target.closest(".flow-box[data-layer-order]");
+  if (lbox) {
+    state.selectedLayerOrder = parseInt(lbox.dataset.layerOrder, 10);
+    state.selectedStepId = null;
+    state.selectedPipeId = null;
+    renderRail(state.run);
+    renderDetail(state.run);
     return;
   }
   const pbox = e.target.closest(".flow-box[data-pipe-id], .flow-pipe[data-pipe-id]");
@@ -1393,6 +1952,14 @@ document.getElementById("detail").addEventListener("click", (e) => {
   }
 });
 
+document.getElementById("overview-btn").addEventListener("click", () => {
+  state.selectedStepId = null;
+  state.selectedPipeId = null;
+  state.selectedLayerOrder = null;
+  renderRail(state.run);
+  renderDetail(state.run);
+});
+
 document.getElementById("exec-picker").addEventListener("change", (e) => {
   const id = parseInt(e.target.value, 10);
   if (!isNaN(id)) {
@@ -1400,6 +1967,7 @@ document.getElementById("exec-picker").addEventListener("change", (e) => {
     state.selectedStepId = null;
     state.selectedPipeId = null;
     state.animatedLayers = new Set();
+    state.loadedSamples = new Map();
     state.run = null;
     pollRun();
   }
@@ -1413,6 +1981,23 @@ async function pollIndex() {
     const curMaxId = state.executions.length
       ? state.executions[state.executions.length - 1].id
       : null;
+    // Notification dispatch: fire one notification per run that transitions
+    // from `running` to a terminal status (success / error / etc). Skip the
+    // very first index poll so we don't notify for runs that finished before
+    // the viewer was even opened.
+    if (state.notificationsEnabled && !state.initialIndexLoad) {
+      for (const e of state.executions) {
+        const prev = state.lastStatusByExecId.get(e.id);
+        const cur = e.status;
+        if (cur && cur !== "running" && prev === "running") {
+          fireRunNotification(e);
+        }
+      }
+    }
+    // Refresh the per-run status cache for the next tick.
+    state.lastStatusByExecId.clear();
+    for (const e of state.executions) state.lastStatusByExecId.set(e.id, e.status);
+    state.initialIndexLoad = false;
     // Auto-jump to the latest run:
     //   * always on initial load (no selection yet)
     //   * when "Follow latest run" is ON and a strictly newer id has appeared
@@ -1424,8 +2009,14 @@ async function pollIndex() {
       state.selectedStepId = null;
       state.selectedPipeId = null;
       state.animatedLayers = new Set();
+      state.loadedSamples = new Map();
       state.run = null;
       pollRun();
+    } else if (state.run) {
+      // Index refresh — re-render the overview so drift is recomputed against
+      // the latest set of executions (a new sibling run may have appeared
+      // since the last poll, changing what "previous run" means).
+      renderDetail(state.run);
     }
     renderExecPicker();
   } catch (_) {
@@ -1646,6 +2237,7 @@ const THEME_KEY = "viewer.theme";
 const FSZ_KEY = "viewer.fontSize";
 const FOLLOW_KEY = "viewer.followLatest";
 const SMOOTH_KEY = "viewer.chartSmoothing";
+const NOTIFY_KEY = "viewer.notifications";
 const CONFIG_COLLAPSED_KEY = "viewer.config.collapsed";
 
 function applyTheme(t) {
@@ -1683,10 +2275,101 @@ function applySmooth(v) {
   if (state.usage && state.usage.length) renderUsageDock(state.usage);
 }
 
+function setNotifyButtons(v) {
+  document.querySelectorAll(".seg[data-notify]").forEach(b =>
+    b.classList.toggle("active", b.dataset.notify === v),
+  );
+}
+
+function setNotifyHint(text, warn) {
+  const hint = document.getElementById("notify-hint");
+  if (!hint) return;
+  hint.textContent = text || "";
+  hint.classList.toggle("warn", !!warn);
+}
+
+function applyNotify(v, fromUser) {
+  if (v === "on") {
+    if (!("Notification" in window)) {
+      state.notificationsEnabled = false;
+      setNotifyButtons("off");
+      setNotifyHint("Browser does not support notifications.", true);
+      localStorage.setItem(NOTIFY_KEY, "off");
+      return;
+    }
+    if (Notification.permission === "granted") {
+      state.notificationsEnabled = true;
+      setNotifyButtons("on");
+      setNotifyHint("");
+      localStorage.setItem(NOTIFY_KEY, "on");
+      return;
+    }
+    if (Notification.permission === "denied") {
+      state.notificationsEnabled = false;
+      setNotifyButtons("off");
+      setNotifyHint("Permission denied — enable in browser settings.", true);
+      localStorage.setItem(NOTIFY_KEY, "off");
+      return;
+    }
+    // Permission still "default"; only prompt on a user-initiated click so
+    // browsers don't block the request as an autoplay-style violation.
+    if (fromUser) {
+      Notification.requestPermission().then((perm) => {
+        if (perm === "granted") {
+          state.notificationsEnabled = true;
+          setNotifyButtons("on");
+          setNotifyHint("");
+          localStorage.setItem(NOTIFY_KEY, "on");
+        } else {
+          state.notificationsEnabled = false;
+          setNotifyButtons("off");
+          setNotifyHint("Permission denied — enable in browser settings.", true);
+          localStorage.setItem(NOTIFY_KEY, "off");
+        }
+      });
+    } else {
+      // Saved state was "on" but permission isn't granted yet — leave UI off
+      // until the user re-toggles it (silent fallback).
+      state.notificationsEnabled = false;
+      setNotifyButtons("off");
+      setNotifyHint("Click On to allow notifications.", false);
+      localStorage.setItem(NOTIFY_KEY, "off");
+    }
+  } else {
+    state.notificationsEnabled = false;
+    setNotifyButtons("off");
+    setNotifyHint("");
+    localStorage.setItem(NOTIFY_KEY, "off");
+  }
+}
+
+function fireRunNotification(execEntry) {
+  if (!state.notificationsEnabled || !("Notification" in window)) return;
+  if (Notification.permission !== "granted") return;
+  const status = execEntry.status || "done";
+  const titleIcon = status === "success" ? "✓" : status === "error" ? "✗" : "•";
+  const title = `${titleIcon} Pipeline ${status} · run #${execEntry.id}`;
+  const dur = execEntry.duration_ms != null ? `${(execEntry.duration_ms / 1000).toFixed(1)}s` : "—";
+  const body = `${execEntry.pipeline || "pipeline"} · ${dur}`;
+  try {
+    const n = new Notification(title, { body, tag: `run-${execEntry.id}` });
+    n.onclick = () => {
+      window.focus();
+      state.selectedExecId = execEntry.id;
+      state.selectedStepId = null;
+      state.selectedPipeId = null;
+      state.animatedLayers = new Set();
+      pollRun();
+      n.close();
+    };
+  } catch (_) { /* notification API errors are non-fatal */ }
+}
+
 applyTheme(localStorage.getItem(THEME_KEY) || "dark");
 applyFontSize(localStorage.getItem(FSZ_KEY) || "md");
 applyFollow(localStorage.getItem(FOLLOW_KEY) || "on");
 applySmooth(localStorage.getItem(SMOOTH_KEY) || "off");
+applyNotify(localStorage.getItem(NOTIFY_KEY) || "off", false);
 if (localStorage.getItem(CONFIG_COLLAPSED_KEY) === "1") {
   document.getElementById("config-section").classList.add("collapsed");
 }
@@ -1702,6 +2385,9 @@ document.querySelectorAll(".seg[data-follow]").forEach(b => {
 });
 document.querySelectorAll(".seg[data-smooth]").forEach(b => {
   b.addEventListener("click", () => applySmooth(b.dataset.smooth));
+});
+document.querySelectorAll(".seg[data-notify]").forEach(b => {
+  b.addEventListener("click", () => applyNotify(b.dataset.notify, true));
 });
 document.getElementById("config-toggle").addEventListener("click", () => {
   const sec = document.getElementById("config-section");

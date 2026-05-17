@@ -55,6 +55,7 @@ def ingest_orders(run_id: str | None = None) -> str:
 
     # Lectura
     raw = read_and_stamp(src)
+    logger.snapshot_schema("bronze", raw)
 
     # Escritura
     return publish_to_bronze(table_name, raw, run_id)

@@ -49,6 +49,14 @@ class Settings(BaseModel):
     log_level: str = "INFO"
     quarantine_threshold: float = Field(0.20, ge=0.0, le=1.0)
 
+    # --- Retention -----------------------------------------------------------
+    # Keep at most this many most-recent runs under `_logs/`. When a new run
+    # starts and the count exceeds this, the oldest run directories are
+    # pruned along with their corresponding data partitions in
+    # `01_bronze/<table>/run_id=…`, `02_silver/…`, `03_gold/…` and the
+    # matching entries in `_logs/index.json`. Set to 0 to disable.
+    keep_runs: int = 50
+
     # --- Medallion layer directory names ------------------------------------
     landing_dir: str = "00_landing"
     bronze_dir: str = "01_bronze"
