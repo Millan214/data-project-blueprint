@@ -1665,10 +1665,6 @@ function renderWaterfall(run) {
   const ticks = niceTicks(totalMs, 5);
 
   const rowsHtml = rows.map(r => {
-    const start = r.start ?? t0;
-    const end = r.end ?? tEnd;
-    const leftPct = ((start - t0) / totalMs) * 100;
-    const widthPct = Math.max(((end - start) / totalMs) * 100, 0.4);
     const status = (r.kind === "step" ? r.step.status : r.pipe.status) || "pending";
     const label = r.kind === "step" ? r.step.name : r.pipe.name;
     const dur = (r.kind === "step" ? r.step.durationMs : r.pipe.durationMs);
@@ -1678,15 +1674,24 @@ function renderWaterfall(run) {
     const attrs = r.kind === "step"
       ? `data-step-id="${escapeHtml(id)}"`
       : `data-pipe-id="${escapeHtml(id)}" data-step-id="${escapeHtml(parentId)}"`;
+    // No start timestamp yet → row is pending and there's nothing to position
+    // a bar against. Render an empty track instead of falling back to t0 (which
+    // would draw a full-width bar that visually "starts before" everything
+    // already on the timeline).
+    let barHtml = "";
+    if (r.start != null) {
+      const end = r.end ?? r.start;  // running with no end → just a marker until next poll
+      const leftPct = ((r.start - t0) / totalMs) * 100;
+      const widthPct = Math.max(((end - r.start) / totalMs) * 100, 0.4);
+      barHtml = `<div class="wf-bar ${r.kind} ${status}" style="left: ${leftPct.toFixed(2)}%; width: ${widthPct.toFixed(2)}%;"></div>`;
+    }
     return `
       <div class="wf-row ${r.kind}" ${attrs} title="${escapeHtml(label)}${dur != null ? ` · ${fmtDuration(dur)}` : ""}">
         <div class="wf-label">
           ${tag ? `<span class="layer-tag">${escapeHtml(tag)}</span>` : ""}
           <span>${escapeHtml(label)}</span>
         </div>
-        <div class="wf-track">
-          <div class="wf-bar ${r.kind} ${status}" style="left: ${leftPct.toFixed(2)}%; width: ${widthPct.toFixed(2)}%;"></div>
-        </div>
+        <div class="wf-track">${barHtml}</div>
         <div class="wf-dur">${dur != null ? fmtDuration(dur) : "—"}</div>
       </div>`;
   }).join("");
