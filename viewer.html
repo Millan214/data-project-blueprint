@@ -1420,10 +1420,12 @@ function renderDetail(run) {
         <div id="sample-target"></div>
       </div>`;
   }
+  // Capture the sample table's scroll position BEFORE wiping the DOM so
+  // we can restore it after the rebuild — otherwise the table snaps back
+  // to left:0 on every pollRun re-render and the user can't scroll right.
+  const sampleScroll = captureSampleScroll();
   el.innerHTML = body;
-  // If the user had a sample loaded for this step before pollRun re-rendered,
-  // re-apply it so the table doesn't visibly flicker / disappear.
-  restoreCachedSample();
+  restoreCachedSample(sampleScroll);
 }
 
 // ---------- inline parquet sample renderer ----------
@@ -1460,12 +1462,30 @@ function paintSample(data, key) {
   targetEl.innerHTML = renderParquetTable(data);
 }
 
+// Helpers to preserve the sample table's scroll position across re-renders.
+function captureSampleScroll() {
+  const wrap = document.querySelector(".sample-table-wrap");
+  if (!wrap) return null;
+  return { left: wrap.scrollLeft, top: wrap.scrollTop };
+}
+function applySampleScroll(pos) {
+  if (!pos) return;
+  const wrap = document.querySelector(".sample-table-wrap");
+  if (!wrap) return;
+  wrap.scrollLeft = pos.left;
+  wrap.scrollTop = pos.top;
+}
+
 // Called from renderDetail after the step view is rebuilt — re-applies any
 // previously-loaded sample so a 2s pollRun re-render doesn't wipe the table.
-function restoreCachedSample() {
+// `scrollPos` is captured from the previous DOM before the rebuild so the
+// user's horizontal/vertical scroll position is preserved.
+function restoreCachedSample(scrollPos) {
   if (!state.selectedStepId) return;
   const cached = state.loadedSamples.get(state.selectedStepId);
-  if (cached) paintSample(cached.data, cached.key);
+  if (!cached) return;
+  paintSample(cached.data, cached.key);
+  applySampleScroll(scrollPos);
 }
 
 function renderParquetTable(data) {
